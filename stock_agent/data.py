@@ -1,0 +1,179 @@
+"""Market data fetching via yfinance, with a small on-disk cache.
+
+yfinance is free and needs no API key. Its `.info` payload is generous but
+individual fields are frequently missing, so every accessor here is written to
+tolerate `None` and odd types rather than assume a field exists.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import time
+from dataclasses import dataclass, asdict
+from typing import Optional
+
+import yfinance as yf
+
+CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".cache")
+CACHE_TTL_SECONDS = 60 * 30  # 30 minutes — market data doesn't move that fast intraday for our purposes
+
+
+@dataclass
+class Stock:
+    """A snapshot of one company's fundamentals and recent price action."""
+
+    ticker: str
+    name: str
+    sector: str
+    industry: str
+    price: Optional[float]
+    currency: str
+    market_cap: Optional[float]
+    trailing_pe: Optional[float]
+    forward_pe: Optional[float]
+    peg: Optional[float]
+    price_to_book: Optional[float]
+    price_to_sales: Optional[float]
+    dividend_yield: Optional[float]  # as a percent, e.g. 2.4 means 2.4%
+    profit_margin: Optional[float]   # as a percent
+    revenue_growth: Optional[float]  # as a percent
+    target_mean_price: Optional[float]
+    recommendation: Optional[str]
+    fifty_two_week_high: Optional[float]
+    fifty_two_week_low: Optional[float]
+    day_change_pct: Optional[float]
+    summary: str
+
+    @property
+    def analyst_upside_pct(self) -> Optional[float]:
+        """Percent upside from current price to the mean analyst target."""
+        if self.price and self.target_mean_price:
+            return round((self.target_mean_price / self.price - 1) * 100, 1)
+        return None
+
+    @property
+    def pct_of_52w_range(self) -> Optional[float]:
+        """Where the price sits in its 52-week range: 0 = at the low, 100 = at the high."""
+        if self.price and self.fifty_two_week_high and self.fifty_two_week_low:
+            span = self.fifty_two_week_high - self.fifty_two_week_low
+            if span > 0:
+                return round((self.price - self.fifty_two_week_low) / span * 100, 1)
+        return None
+
+    def to_dict(self) -> dict:
+        d = asdict(self)
+        d["analyst_upside_pct"] = self.analyst_upside_pct
+        d["pct_of_52w_range"] = self.pct_of_52w_range
+        return d
+
+
+def _num(value) -> Optional[float]:
+    """Coerce a yfinance value to a float, or None if it isn't a usable number."""
+    try:
+        if value is None:
+            return None
+        f = float(value)
+        # yfinance sometimes returns absurd sentinel values; treat them as missing.
+        if f != f or f in (float("inf"), float("-inf")):
+            return None
+        return f
+    except (TypeError, ValueError):
+        return None
+
+
+def _pct(value) -> Optional[float]:
+    """yfinance reports ratios like margins/yields as fractions (0.024). Return a percent."""
+    n = _num(value)
+    return round(n * 100, 2) if n is not None else None
+
+
+def _cache_path(ticker: str) -> str:
+    return os.path.join(CACHE_DIR, f"{ticker.upper()}.json")
+
+
+def _read_cache(ticker: str) -> Optional[Stock]:
+    path = _cache_path(ticker)
+    if not os.path.exists(path):
+        return None
+    if time.time() - os.path.getmtime(path) > CACHE_TTL_SECONDS:
+        return None
+    try:
+        with open(path) as f:
+            raw = json.load(f)
+        # Only keep dataclass fields; computed properties are recomputed.
+        fields = Stock.__dataclass_fields__.keys()
+        return Stock(**{k: raw[k] for k in fields})
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return None
+
+
+def _write_cache(stock: Stock) -> None:
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    with open(_cache_path(stock.ticker), "w") as f:
+        json.dump(stock.to_dict(), f)
+
+
+def fetch_stock(ticker: str, use_cache: bool = True) -> Optional[Stock]:
+    """Fetch one stock's snapshot. Returns None if the ticker can't be resolved."""
+    ticker = ticker.upper().strip()
+    if use_cache:
+        cached = _read_cache(ticker)
+        if cached is not None:
+            return cached
+
+    try:
+        t = yf.Ticker(ticker)
+        info = t.info or {}
+    except Exception:
+        return None
+
+    if not info or info.get("regularMarketPrice") is None and info.get("currentPrice") is None:
+        # yfinance returns a near-empty dict for bad tickers.
+        return None
+
+    price = _num(info.get("currentPrice") or info.get("regularMarketPrice"))
+    prev_close = _num(info.get("previousClose") or info.get("regularMarketPreviousClose"))
+    day_change = None
+    if price is not None and prev_close:
+        day_change = round((price / prev_close - 1) * 100, 2)
+
+    stock = Stock(
+        ticker=ticker,
+        name=info.get("shortName") or info.get("longName") or ticker,
+        sector=info.get("sector") or "Unknown",
+        industry=info.get("industry") or "Unknown",
+        price=price,
+        currency=info.get("currency") or "USD",
+        market_cap=_num(info.get("marketCap")),
+        trailing_pe=_num(info.get("trailingPE")),
+        forward_pe=_num(info.get("forwardPE")),
+        peg=_num(info.get("trailingPegRatio") or info.get("pegRatio")),
+        price_to_book=_num(info.get("priceToBook")),
+        price_to_sales=_num(info.get("priceToSalesTrailing12Months")),
+        dividend_yield=_pct(info.get("dividendYield"))
+        if _num(info.get("dividendYield")) and _num(info.get("dividendYield")) < 1
+        else _num(info.get("dividendYield")),
+        profit_margin=_pct(info.get("profitMargins")),
+        revenue_growth=_pct(info.get("revenueGrowth")),
+        target_mean_price=_num(info.get("targetMeanPrice")),
+        recommendation=info.get("recommendationKey"),
+        fifty_two_week_high=_num(info.get("fiftyTwoWeekHigh")),
+        fifty_two_week_low=_num(info.get("fiftyTwoWeekLow")),
+        day_change_pct=day_change,
+        summary=(info.get("longBusinessSummary") or "").strip(),
+    )
+    _write_cache(stock)
+    return stock
+
+
+def fetch_universe(tickers, use_cache: bool = True, progress=None):
+    """Fetch snapshots for a list of tickers, skipping any that fail to resolve."""
+    stocks = []
+    for i, ticker in enumerate(tickers):
+        if progress:
+            progress(i + 1, len(tickers), ticker)
+        s = fetch_stock(ticker, use_cache=use_cache)
+        if s is not None:
+            stocks.append(s)
+    return stocks

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ s.ticker }} — {{ s.name }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('home') }}" class="back">← back to standouts</a>
+
+<section class="company-head">
+  <div>
+    <h1>{{ s.ticker }} <span class="name">{{ s.name }}</span></h1>
+    <div class="sector">{{ s.sector }} · {{ s.industry }}</div>
+  </div>
+  <div class="pricebox">
+    <div class="price">{{ s.price | num(2) }} <span>{{ s.currency }}</span></div>
+    {% if s.day_change_pct is not none %}
+    <div class="chg {{ 'up' if s.day_change_pct >= 0 else 'down' }}">
+      {{ '%+.2f' % s.day_change_pct }}% today
+    </div>
+    {% endif %}
+    {% if score is not none %}<div class="score-pill">valuation score {{ '%+.0f' % score }}</div>{% endif %}
+  </div>
+</section>
+
+<section class="metric-grid">
+  <div><label>Market cap</label><b>{{ s.market_cap | money }}</b></div>
+  <div><label>Trailing P/E</label><b>{{ s.trailing_pe | num }}</b></div>
+  <div><label>Forward P/E</label><b>{{ s.forward_pe | num }}</b></div>
+  <div><label>PEG</label><b>{{ s.peg | num(2) }}</b></div>
+  <div><label>Price / Sales</label><b>{{ s.price_to_sales | num }}</b></div>
+  <div><label>Price / Book</label><b>{{ s.price_to_book | num }}</b></div>
+  <div><label>Dividend yield</label><b>{{ (s.dividend_yield ~ '%') if s.dividend_yield is not none else '—' }}</b></div>
+  <div><label>Profit margin</label><b>{{ (s.profit_margin ~ '%') if s.profit_margin is not none else '—' }}</b></div>
+  <div><label>Revenue growth</label><b>{{ (s.revenue_growth ~ '%') if s.revenue_growth is not none else '—' }}</b></div>
+  <div><label>Analyst target</label><b>{{ s.target_mean_price | num(2) }}</b></div>
+  <div><label>Analyst upside</label><b>{{ (s.analyst_upside_pct ~ '%') if s.analyst_upside_pct is not none else '—' }}</b></div>
+  <div><label>52-wk range</label><b>{{ (s.pct_of_52w_range ~ '%') if s.pct_of_52w_range is not none else '—' }}</b></div>
+</section>
+
+{% if reasons %}
+<section class="signals">
+  <h2>Why it screened</h2>
+  <ul>{% for r in reasons %}<li>{{ r }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+<section class="overview">
+  <h2>Company overview</h2>
+  {% if ai_enabled and overview and not overview.startswith('__error__') %}
+    <div class="read-body">
+      {% for para in overview.split('\n\n') %}<p>{{ para }}</p>{% endfor %}
+    </div>
+  {% elif s.summary %}
+    <p class="fallback-note">AI overview is off — showing the raw company description.</p>
+    <p>{{ s.summary }}</p>
+  {% else %}
+    <p class="empty">No overview available.</p>
+  {% endif %}
+</section>
+{% endblock %}

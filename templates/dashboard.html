@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Stock Agent — what looks interesting{% endblock %}
+
+{% macro card(x, kind) %}
+<a class="card {{ kind }}" href="{{ url_for('company', ticker=x.ticker) }}">
+  <div class="card-head">
+    <div>
+      <span class="ticker">{{ x.ticker }}</span>
+      <span class="name">{{ x.name }}</span>
+    </div>
+    <span class="score {{ kind }}">{{ '%+.0f' % x.score }}</span>
+  </div>
+  <div class="sector">{{ x.sector }} · {{ x.market_cap | money }}</div>
+  <div class="metrics">
+    <div><label>Fwd P/E</label><b>{{ x.forward_pe | num }}</b></div>
+    <div><label>P/S</label><b>{{ x.price_to_sales | num }}</b></div>
+    <div><label>PEG</label><b>{{ x.peg | num(2) }}</b></div>
+    <div><label>Upside</label><b>{{ (x.analyst_upside_pct ~ '%') if x.analyst_upside_pct is not none else '—' }}</b></div>
+  </div>
+  {% if x.reasons %}
+  <ul class="reasons">
+    {% for r in x.reasons[:2] %}<li>{{ r }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+</a>
+{% endmacro %}
+
+{% block content %}
+<section class="hero">
+  <h1>What looks interesting</h1>
+  <p class="sub">Scanned {{ count }} large-caps and ranked each against its own sector peers on
+    forward P/E, price-to-sales, PEG and analyst upside.</p>
+</section>
+
+{% if ai_enabled and market_read and not market_read.startswith('__error__') %}
+<section class="read">
+  <h2>The read</h2>
+  <div class="read-body">
+    {% for para in market_read.split('\n\n') %}<p>{{ para }}</p>{% endfor %}
+  </div>
+</section>
+{% elif not ai_enabled %}
+<section class="read note">
+  <p><b>AI insights are off.</b> Set an <code>ANTHROPIC_API_KEY</code> and reload to get a
+    plain-English read of what's driving these names.</p>
+</section>
+{% endif %}
+
+<div class="columns">
+  <section>
+    <h2 class="col-title cheap">🟢 Looks cheap vs peers</h2>
+    <div class="grid">
+      {% for x in cheap %}{{ card(x, 'cheap') }}{% endfor %}
+      {% if not cheap %}<p class="empty">Nothing screening cheap right now.</p>{% endif %}
+    </div>
+  </section>
+  <section>
+    <h2 class="col-title expensive">🔴 Looks expensive vs peers</h2>
+    <div class="grid">
+      {% for x in expensive %}{{ card(x, 'expensive') }}{% endfor %}
+      {% if not expensive %}<p class="empty">Nothing screening expensive right now.</p>{% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}
