@@ -91,10 +91,10 @@ MARKET_SYSTEM = (
 )
 
 
-def market_read(cheap, expensive) -> Optional[str]:
-    """A short market-level read over the cheap/expensive standouts.
+def market_read(top, bottom) -> Optional[str]:
+    """A short market-level read over the most/least attractive standouts.
 
-    `cheap` and `expensive` are lists of ScoredStock.
+    `top` and `bottom` are lists of ScoredStock.
     """
 
     def brief(items):
@@ -103,23 +103,27 @@ def market_read(cheap, expensive) -> Optional[str]:
             s = x.stock
             lines.append(
                 f"- {s.ticker} ({s.name}, {s.sector}): "
-                f"fwd P/E {s.forward_pe}, P/S {s.price_to_sales}, PEG {s.peg}, "
-                f"analyst upside {s.analyst_upside_pct}%, score {x.score:.0f}. "
+                f"Value {x.value_score}, Growth {x.growth_score}, Quality {x.quality_score}, "
+                f"blended {x.score:.0f}. "
+                f"fwd P/E {s.forward_pe}, rev growth {s.revenue_growth}%, "
+                f"margin {s.profit_margin}%, analyst upside {s.analyst_upside_pct}%. "
                 f"Signals: {'; '.join(x.reasons) or 'none notable'}"
             )
         return "\n".join(lines) or "(none)"
 
     prompt = (
-        "Below are today's valuation standouts among big US large-caps, scored "
-        "against their own sector peers. Write a 3-4 short-paragraph read for a "
-        "retail investor: (1) the overall picture, (2) what makes the 'cheap-looking' "
-        "names screen cheap and the key caveat for each, (3) what's driving the "
-        "'expensive-looking' names, (4) one sentence on what to watch. Be specific "
-        "and reference tickers.\n\n"
-        f"CHEAP-LOOKING vs peers:\n{brief(cheap)}\n\n"
-        f"EXPENSIVE-LOOKING vs peers:\n{brief(expensive)}"
+        "Below are today's standouts among big US large-caps. Each is scored on "
+        "three axes vs its sector peers: Value (cheapness), Growth (revenue/earnings "
+        "growth and analyst upside), and Quality (profitability). Write a 3-4 "
+        "short-paragraph read for a retail investor: (1) the overall picture, "
+        "(2) what makes the top names attractive — call out whether it's value, "
+        "growth, quality, or a mix, plus the key caveat for each, (3) what's dragging "
+        "the least-attractive names down, (4) one sentence on what to watch. Be "
+        "specific and reference tickers.\n\n"
+        f"MOST INTERESTING:\n{brief(top)}\n\n"
+        f"LEAST ATTRACTIVE:\n{brief(bottom)}"
     )
-    tickers = ",".join(x.stock.ticker for x in list(cheap) + list(expensive))
+    tickers = ",".join(x.stock.ticker for x in list(top) + list(bottom))
     return _generate(MARKET_SYSTEM, prompt, cache_parts=[tickers], max_tokens=1400)
 
 
@@ -141,7 +145,9 @@ def company_overview(stock) -> Optional[str]:
         f"Trailing P/E: {s.trailing_pe}\nForward P/E: {s.forward_pe}\nPEG: {s.peg}\n"
         f"Price/Book: {s.price_to_book}\nPrice/Sales: {s.price_to_sales}\n"
         f"Dividend yield %: {s.dividend_yield}\nProfit margin %: {s.profit_margin}\n"
-        f"Revenue growth %: {s.revenue_growth}\n"
+        f"Revenue growth % (YoY): {s.revenue_growth}\n"
+        f"Earnings growth % (YoY): {s.earnings_growth}\n"
+        f"Return on equity %: {s.return_on_equity}\n"
         f"Analyst mean target: {s.target_mean_price} (upside {s.analyst_upside_pct}%)\n"
         f"Analyst recommendation: {s.recommendation}\n"
         f"52-week range position: {s.pct_of_52w_range}% of the way from low to high\n"

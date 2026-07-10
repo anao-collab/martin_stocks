@@ -1,25 +1,37 @@
 # 📈 Stock Agent
 
-A web dashboard that scans big US large-caps, flags the **valuation standouts**
-— names that look cheap or expensive versus their own sector peers — and uses
-**Claude** to explain, in plain English, what's actually interesting.
+A web dashboard that scans big US large-caps plus your own watchlist, scores
+every name on **Value, Growth, and Quality**, and uses **Claude** to explain, in
+plain English, what's actually interesting.
 
-Built around one idea: a stock isn't cheap or expensive in a vacuum. A utility
-on 20× earnings and a software company on 20× earnings are telling completely
-different stories. So every name is scored **relative to its sector**, not on an
-absolute number.
+Two ideas underneath it:
+
+1. **A stock isn't cheap or expensive in a vacuum.** A utility on 20× earnings
+   and a software company on 20× earnings tell completely different stories — so
+   value is measured *relative to sector peers*, not on an absolute number.
+2. **Cheap isn't the whole story.** A great business that's growing fast can be
+   worth a rich price; a cheap one that's shrinking is a trap. So every stock
+   gets three sub-scores that blend into one:
+   - **Value** — how cheap it looks vs sector peers (forward P/E, price/sales).
+   - **Growth** — revenue & earnings growth, analyst upside, and whether earnings
+     are expected to rise (forward P/E below trailing).
+   - **Quality** — profitability (profit margin, return on equity).
+
+   A profitless fast-grower with no P/E at all can still rank well on Growth +
+   Quality — which is the point.
 
 ## What it does
 
-- **Scans ~50 liquid large-caps** across every major sector (data from Yahoo
-  Finance via `yfinance` — no API key needed for the data).
-- **Ranks valuation standouts** on forward P/E and price-to-sales versus the
-  sector median, plus PEG and analyst upside. Positive score → looks cheap;
-  negative → looks expensive.
-- **Writes a plain-English "read"** with Claude Opus 4.8 — the overall picture,
-  what's driving each side, and the caveats. (Optional; see below.)
-- **Company pages** — click any ticker for the full metric set and an AI-written
-  company overview grounded in the data.
+- **Scans ~50 liquid large-caps** plus your watchlist (data from Yahoo Finance
+  via `yfinance` — no API key needed for the data).
+- **Ranks the most / least interesting** names by blended score, with the Value /
+  Growth / Quality breakdown shown on every card.
+- **Lays out your triangle** — your watchlist grouped into Base / Middle / Top
+  tiers (see `stock_agent/watchlist.py` to edit it).
+- **Writes a plain-English "read"** with Claude Opus 4.8 — what's driving each
+  side and the caveats. (Optional; see below.)
+- **Company pages** — click any ticker for the full metric set, the sub-score
+  breakdown, and an AI-written company overview grounded in the data.
 
 ## Quick start
 
@@ -38,27 +50,38 @@ data and the company description instead of the AI narrative.
 
 ## How the score works
 
-For each stock, within its sector:
+Each stock gets three sub-scores (higher = better), which blend into a
+composite that drives the ranking:
 
-| Signal | Contribution |
+| Sub-score | Built from |
 |---|---|
-| Forward P/E below sector median | + (cheap) |
-| Price/Sales below sector median | + (cheap) |
-| Analyst upside to mean target | + / − |
-| PEG < 1 | small + · PEG > 3 | small − |
-| Dividend yield ≥ 3% | small + |
+| **Value**   | Forward P/E and price/sales vs the **sector median** |
+| **Growth**  | Revenue growth, earnings growth, analyst upside, forward P/E below trailing |
+| **Quality** | Profit margin, return on equity |
 
-Scores are capped per-signal so one wild data point can't dominate. See
-`stock_agent/screener.py`.
+`composite = Value×0.9 + Growth×0.8 + Quality×0.5`. Missing sub-scores count as
+zero, so a name with no P/E still ranks on Growth + Quality. Every contribution
+is capped so one wild data point can't dominate. See `stock_agent/screener.py`.
+
+## Your watchlist / triangle
+
+`stock_agent/watchlist.py` holds your tickers grouped into tiers:
+
+- **Base** (~60%, hold 2–3 yrs), **Middle** (~30%, cyclical AI/robotics/space),
+  **Top** (special situations).
+
+Edit that file to change what you track — the tickers are scanned automatically
+and shown grouped by tier on the dashboard.
 
 ## Project layout
 
 ```
 app.py                  Flask app (dashboard + company pages)
 stock_agent/
-  universe.py           the large-cap ticker list
+  universe.py           the default large-cap ticker list
+  watchlist.py          your personal watchlist + triangle tiers
   data.py               yfinance fetching + 30-min disk cache
-  screener.py           sector-relative valuation scoring
+  screener.py           Value / Growth / Quality scoring
   ai.py                 Claude Opus 4.8 market read + company overviews
 templates/              dashboard.html, company.html, base.html
 static/style.css        dark dashboard styling

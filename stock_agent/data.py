@@ -37,7 +37,9 @@ class Stock:
     price_to_sales: Optional[float]
     dividend_yield: Optional[float]  # as a percent, e.g. 2.4 means 2.4%
     profit_margin: Optional[float]   # as a percent
-    revenue_growth: Optional[float]  # as a percent
+    revenue_growth: Optional[float]  # as a percent, year-over-year
+    earnings_growth: Optional[float]  # as a percent, year-over-year
+    return_on_equity: Optional[float]  # as a percent
     target_mean_price: Optional[float]
     recommendation: Optional[str]
     fifty_two_week_high: Optional[float]
@@ -156,6 +158,8 @@ def fetch_stock(ticker: str, use_cache: bool = True) -> Optional[Stock]:
         else _num(info.get("dividendYield")),
         profit_margin=_pct(info.get("profitMargins")),
         revenue_growth=_pct(info.get("revenueGrowth")),
+        earnings_growth=_pct(info.get("earningsGrowth") or info.get("earningsQuarterlyGrowth")),
+        return_on_equity=_pct(info.get("returnOnEquity")),
         target_mean_price=_num(info.get("targetMeanPrice")),
         recommendation=info.get("recommendationKey"),
         fifty_two_week_high=_num(info.get("fiftyTwoWeekHigh")),
