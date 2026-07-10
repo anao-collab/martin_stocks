@@ -16,8 +16,18 @@
       {{ '%+.2f' % s.day_change_pct }}% today
     </div>
     {% endif %}
-    {% if score is not none %}<div class="score-pill">valuation score {{ '%+.0f' % score }}</div>{% endif %}
+    {% if tier %}<div class="tier-name {{ tier|lower }}">▲ {{ tier }} tier</div>{% endif %}
+    {% if score is not none %}<div class="score-pill">score {{ '%+.0f' % score }}</div>{% endif %}
   </div>
+</section>
+
+<section class="subscore-row">
+  {% for label, val in [('Value', value_score), ('Growth', growth_score), ('Quality', quality_score)] %}
+  <div class="ss-block {{ 'pos' if val is not none and val >= 0 else ('neg' if val is not none else 'na') }}">
+    <label>{{ label }}</label>
+    <b>{{ ('%+d' % val) if val is not none else '—' }}</b>
+  </div>
+  {% endfor %}
 </section>
 
 <section class="metric-grid">
@@ -30,6 +40,8 @@
   <div><label>Dividend yield</label><b>{{ (s.dividend_yield ~ '%') if s.dividend_yield is not none else '—' }}</b></div>
   <div><label>Profit margin</label><b>{{ (s.profit_margin ~ '%') if s.profit_margin is not none else '—' }}</b></div>
   <div><label>Revenue growth</label><b>{{ (s.revenue_growth ~ '%') if s.revenue_growth is not none else '—' }}</b></div>
+  <div><label>Earnings growth</label><b>{{ (s.earnings_growth ~ '%') if s.earnings_growth is not none else '—' }}</b></div>
+  <div><label>Return on equity</label><b>{{ (s.return_on_equity ~ '%') if s.return_on_equity is not none else '—' }}</b></div>
   <div><label>Analyst target</label><b>{{ s.target_mean_price | num(2) }}</b></div>
   <div><label>Analyst upside</label><b>{{ (s.analyst_upside_pct ~ '%') if s.analyst_upside_pct is not none else '—' }}</b></div>
   <div><label>52-wk range</label><b>{{ (s.pct_of_52w_range ~ '%') if s.pct_of_52w_range is not none else '—' }}</b></div>

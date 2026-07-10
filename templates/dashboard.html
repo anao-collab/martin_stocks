@@ -1,6 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Stock Agent — what looks interesting{% endblock %}
 
+{% macro badge(label, val) %}
+  {% if val is not none %}
+    <span class="sb {{ 'pos' if val >= 0 else 'neg' }}" title="{{ label }} score">{{ label[0] }} {{ '%+d' % val }}</span>
+  {% else %}
+    <span class="sb none" title="{{ label }}: no data">{{ label[0] }} —</span>
+  {% endif %}
+{% endmacro %}
+
 {% macro card(x, kind) %}
 <a class="card {{ kind }}" href="{{ url_for('company', ticker=x.ticker) }}">
   <div class="card-head">
@@ -11,11 +19,10 @@
     <span class="score {{ kind }}">{{ '%+.0f' % x.score }}</span>
   </div>
   <div class="sector">{{ x.sector }} · {{ x.market_cap | money }}</div>
-  <div class="metrics">
-    <div><label>Fwd P/E</label><b>{{ x.forward_pe | num }}</b></div>
-    <div><label>P/S</label><b>{{ x.price_to_sales | num }}</b></div>
-    <div><label>PEG</label><b>{{ x.peg | num(2) }}</b></div>
-    <div><label>Upside</label><b>{{ (x.analyst_upside_pct ~ '%') if x.analyst_upside_pct is not none else '—' }}</b></div>
+  <div class="subscores">
+    {{ badge('Value', x.value_score) }}
+    {{ badge('Growth', x.growth_score) }}
+    {{ badge('Quality', x.quality_score) }}
   </div>
   {% if x.reasons %}
   <ul class="reasons">
@@ -28,8 +35,9 @@
 {% block content %}
 <section class="hero">
   <h1>What looks interesting</h1>
-  <p class="sub">Scanned {{ count }} large-caps and ranked each against its own sector peers on
-    forward P/E, price-to-sales, PEG and analyst upside.</p>
+  <p class="sub">Scanned {{ count }} names and scored each on three things: is it
+    <b>cheap</b> vs its sector (Value), is it <b>growing</b> (Growth), and is the
+    <b>business any good</b> (Quality). Higher blended score = more interesting.</p>
 </section>
 
 {% if ai_enabled and market_read and not market_read.startswith('__error__') %}
@@ -48,18 +56,37 @@
 
 <div class="columns">
   <section>
-    <h2 class="col-title cheap">🟢 Looks cheap vs peers</h2>
+    <h2 class="col-title top">🟢 Most interesting</h2>
     <div class="grid">
-      {% for x in cheap %}{{ card(x, 'cheap') }}{% endfor %}
-      {% if not cheap %}<p class="empty">Nothing screening cheap right now.</p>{% endif %}
+      {% for x in top %}{{ card(x, 'top') }}{% endfor %}
+      {% if not top %}<p class="empty">Nothing scoring positive right now.</p>{% endif %}
     </div>
   </section>
   <section>
-    <h2 class="col-title expensive">🔴 Looks expensive vs peers</h2>
+    <h2 class="col-title bottom">🔴 Least attractive</h2>
     <div class="grid">
-      {% for x in expensive %}{{ card(x, 'expensive') }}{% endfor %}
-      {% if not expensive %}<p class="empty">Nothing screening expensive right now.</p>{% endif %}
+      {% for x in bottom %}{{ card(x, 'bottom') }}{% endfor %}
+      {% if not bottom %}<p class="empty">Nothing scoring negative right now.</p>{% endif %}
     </div>
   </section>
 </div>
+
+<section class="triangle">
+  <h2>▲ Your triangle</h2>
+  <p class="sub">Your watchlist, grouped the way you laid it out in class.</p>
+  {% for tier in triangle %}
+  <div class="tier">
+    <div class="tier-head">
+      <span class="tier-name {{ tier.name|lower }}">{{ tier.name }}</span>
+      <span class="tier-blurb">{{ tier.blurb }}</span>
+    </div>
+    <div class="grid tier-grid">
+      {% for x in tier.stocks %}{{ card(x, 'top' if x.score >= 0 else 'bottom') }}{% endfor %}
+    </div>
+    {% if tier.missing %}
+    <p class="missing">Couldn't fetch: {{ tier.missing | join(', ') }}</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
 {% endblock %}
