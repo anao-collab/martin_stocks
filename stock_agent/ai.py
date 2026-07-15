@@ -107,7 +107,7 @@ def market_read(top, bottom) -> Optional[str]:
                 f"blended {x.score:.0f}. "
                 f"fwd P/E {s.forward_pe}, rev growth {s.revenue_growth}%, "
                 f"margin {s.profit_margin}%, analyst upside {s.analyst_upside_pct}%. "
-                f"Signals: {'; '.join(x.reasons) or 'none notable'}"
+                f"Signals: {'; '.join(r['text'] for r in x.reasons) or 'none notable'}"
             )
         return "\n".join(lines) or "(none)"
 

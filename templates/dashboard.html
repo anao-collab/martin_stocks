@@ -9,35 +9,54 @@
   {% endif %}
 {% endmacro %}
 
-{% macro card(x, kind) %}
-<a class="card {{ kind }}" href="{{ url_for('company', ticker=x.ticker) }}">
-  <div class="card-head">
-    <div>
-      <span class="ticker">{{ x.ticker }}</span>
-      <span class="name">{{ x.name }}</span>
+{% macro card(x, kind, removable=False) %}
+{% set primary = (kind == 'top') %}
+{% set ordered = (x.reasons|selectattr('good','equalto',primary)|list) + (x.reasons|rejectattr('good','equalto',primary)|list) %}
+<div class="card-wrap">
+  <a class="card {{ kind }}" href="{{ url_for('company', ticker=x.ticker) }}">
+    <div class="card-head">
+      <div>
+        <span class="ticker">{{ x.ticker }}</span>
+        <span class="name">{{ x.name }}</span>
+      </div>
+      <span class="score {{ kind }}">{{ '%+.0f' % x.score }}</span>
     </div>
-    <span class="score {{ kind }}">{{ '%+.0f' % x.score }}</span>
-  </div>
-  <div class="sector">{{ x.sector }} · {{ x.market_cap | money }}</div>
-  <div class="subscores">
-    {{ badge('Value', x.value_score) }}
-    {{ badge('Growth', x.growth_score) }}
-    {{ badge('Quality', x.quality_score) }}
-  </div>
-  {% if x.reasons %}
-  <ul class="reasons">
-    {% for r in x.reasons[:2] %}<li>{{ r }}</li>{% endfor %}
-  </ul>
+    <div class="sector">{{ x.sector }} · {{ x.market_cap | money }}</div>
+    <div class="subscores">
+      {{ badge('Value', x.value_score) }}
+      {{ badge('Growth', x.growth_score) }}
+      {{ badge('Quality', x.quality_score) }}
+    </div>
+    {% if x.takeaway %}<p class="takeaway">{{ x.takeaway }}</p>{% endif %}
+    {% if ordered %}
+    <ul class="reasons">
+      {% for r in ordered[:2] %}<li class="{{ 'r-good' if r.good else 'r-bad' }}">{{ r.text }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </a>
+  {% if removable %}
+  <form class="remove" method="post" action="{{ url_for('watchlist_remove') }}">
+    <input type="hidden" name="ticker" value="{{ x.ticker }}">
+    <button type="submit" title="Remove {{ x.ticker }} from your watchlist">×</button>
+  </form>
   {% endif %}
-</a>
+</div>
 {% endmacro %}
 
 {% block content %}
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% if msgs %}
+  <div class="flashes">
+    {% for cat, m in msgs %}<div class="flash {{ cat }}">{{ m }}</div>{% endfor %}
+  </div>
+  {% endif %}
+{% endwith %}
+
 <section class="hero">
   <h1>What looks interesting</h1>
   <p class="sub">Scanned {{ count }} names and scored each on three things: is it
     <b>cheap</b> vs its sector (Value), is it <b>growing</b> (Growth), and is the
-    <b>business any good</b> (Quality). Higher blended score = more interesting.</p>
+    <b>business any good</b> (Quality). Each card explains the verdict in a line.</p>
 </section>
 
 {% if ai_enabled and market_read and not market_read.startswith('__error__') %}
@@ -72,8 +91,17 @@
 </div>
 
 <section class="triangle">
-  <h2>▲ Your triangle</h2>
-  <p class="sub">Your watchlist, grouped the way you laid it out in class.</p>
+  <div class="triangle-head">
+    <div>
+      <h2>▲ Your triangle</h2>
+      <p class="sub">Your watchlist, grouped the way you laid it out in class.</p>
+    </div>
+    <form class="addbar" method="post" action="{{ url_for('watchlist_add') }}">
+      <input name="ticker" placeholder="Add a ticker (e.g. PLTR)" maxlength="8" autocomplete="off" required>
+      <select name="tier">{% for t in tiers %}<option value="{{ t }}">{{ t }}</option>{% endfor %}</select>
+      <button type="submit">+ Add</button>
+    </form>
+  </div>
   {% for tier in triangle %}
   <div class="tier">
     <div class="tier-head">
@@ -81,7 +109,8 @@
       <span class="tier-blurb">{{ tier.blurb }}</span>
     </div>
     <div class="grid tier-grid">
-      {% for x in tier.stocks %}{{ card(x, 'top' if x.score >= 0 else 'bottom') }}{% endfor %}
+      {% for x in tier.stocks %}{{ card(x, 'top' if x.score >= 0 else 'bottom', removable=True) }}{% endfor %}
+      {% if not tier.stocks %}<p class="empty">Nothing here yet — add a ticker above.</p>{% endif %}
     </div>
     {% if tier.missing %}
     <p class="missing">Couldn't fetch: {{ tier.missing | join(', ') }}</p>

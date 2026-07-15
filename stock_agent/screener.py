@@ -7,9 +7,11 @@ Every stock gets three sub-scores, each measured so that *higher is better*:
               are expected to rise (forward P/E below trailing P/E).
   * Quality — how profitable the business is (profit margin, return on equity).
 
-These blend into one composite score that drives the ranking. A profitless
-fast-grower (no P/E at all) can still rank well on Growth + Quality — which is
-exactly the point: we're not screening on cheapness alone.
+These blend into one composite score that drives the ranking. Alongside the
+score we build:
+  * a list of tagged `reasons` (each marked as a plus or a minus), and
+  * a one-line plain-English `takeaway` explaining the verdict — so the "least
+    attractive" names actually say *why* they're unattractive.
 """
 
 from __future__ import annotations
@@ -28,7 +30,8 @@ class ScoredStock:
     value_score: Optional[float]
     growth_score: Optional[float]
     quality_score: Optional[float]
-    reasons: List[str]
+    reasons: List[dict]              # each: {"good": bool, "text": str}
+    takeaway: str
 
     def to_dict(self) -> dict:
         d = self.stock.to_dict()
@@ -37,6 +40,7 @@ class ScoredStock:
         d["growth_score"] = round(self.growth_score) if self.growth_score is not None else None
         d["quality_score"] = round(self.quality_score) if self.quality_score is not None else None
         d["reasons"] = self.reasons
+        d["takeaway"] = self.takeaway
         return d
 
 
@@ -45,8 +49,6 @@ def _clamp(x: float, lo: float, hi: float) -> float:
 
 
 class _Accumulator:
-    """Adds up weighted contributions and remembers whether any data was present."""
-
     def __init__(self):
         self.total = 0.0
         self.count = 0
@@ -84,10 +86,57 @@ def _gap_pct(value: Optional[float], median: Optional[float]) -> Optional[float]
     return None
 
 
-def _score_one(s: Stock, med: dict):
-    reasons: List[str] = []
+def _phrase(score: Optional[float], hi, mid, lo_neg, none_text):
+    """Turn a sub-score into a word for the takeaway sentence."""
+    if score is None:
+        return none_text
+    if score >= 20:
+        return hi
+    if score > 0:
+        return mid
+    if score <= -20:
+        return lo_neg
+    return mid  # mildly negative reads as roughly neutral
 
-    # ---- Value: cheap versus sector peers ----------------------------------
+
+def _takeaway(s: Stock, value, growth, quality) -> str:
+    """A single plain-English sentence explaining the overall verdict."""
+    val_word = _phrase(value, "cheap", "fairly priced", "expensive", "hard to value")
+    grow_word = _phrase(growth, "growing strongly", "growing modestly", "shrinking", "with unclear growth")
+    qual_word = _phrase(quality, "highly profitable", "profitable", "unprofitable", "with thin data on profitability")
+
+    val_clause = {
+        "cheap": f"screens cheap versus {s.sector} peers",
+        "fairly priced": f"is priced roughly in line with {s.sector} peers",
+        "expensive": f"looks expensive versus {s.sector} peers",
+        "hard to value": "has no clean P/E to compare on",
+    }[val_word]
+
+    return (
+        f"{s.ticker} {val_clause}, is {grow_word}, and is {qual_word}. "
+        + _verdict(value, growth, quality)
+    )
+
+
+def _verdict(value, growth, quality) -> str:
+    composite_feel = (value or 0) + (growth or 0) + (quality or 0)
+    if composite_feel >= 40:
+        return "The combination is what makes it stand out."
+    if composite_feel <= -20:
+        return "That mix is why it screens as unattractive right now."
+    return "A mixed picture — worth a closer look before deciding."
+
+
+def _score_one(s: Stock, med: dict):
+    reasons: List[dict] = []
+
+    def good(text):
+        reasons.append({"good": True, "text": text})
+
+    def bad(text):
+        reasons.append({"good": False, "text": text})
+
+    # ---- Value ------------------------------------------------------------
     value = _Accumulator()
     pe_gap = _gap_pct(s.forward_pe, med.get("forward_pe"))
     value.add(pe_gap, 0.6, -50, 50)
@@ -96,55 +145,56 @@ def _score_one(s: Stock, med: dict):
     value_score = value.result(-50, 50)
 
     if pe_gap is not None and pe_gap >= 15:
-        reasons.append(f"Forward P/E of {s.forward_pe:.1f} is ~{pe_gap:.0f}% below {s.sector} peers")
-    elif pe_gap is not None and pe_gap <= -25:
-        reasons.append(f"Forward P/E of {s.forward_pe:.1f} is ~{abs(pe_gap):.0f}% above {s.sector} peers")
+        good(f"Forward P/E of {s.forward_pe:.1f} is ~{pe_gap:.0f}% below {s.sector} peers")
+    elif pe_gap is not None and pe_gap <= -15:
+        bad(f"Forward P/E of {s.forward_pe:.1f} is ~{abs(pe_gap):.0f}% above {s.sector} peers — you're paying up")
+    if ps_gap is not None and ps_gap <= -30:
+        bad(f"Price/sales is rich versus {s.sector} peers")
 
-    # ---- Growth: is it actually growing? -----------------------------------
+    # ---- Growth -----------------------------------------------------------
     growth = _Accumulator()
     growth.add(s.revenue_growth, 1.0, -25, 50)
     growth.add(s.earnings_growth, 0.5, -40, 60)
     growth.add(s.analyst_upside_pct, 0.7, -25, 40)
-    earnings_rising = (
-        s.forward_pe and s.trailing_pe and 0 < s.forward_pe < s.trailing_pe
-    )
+    earnings_rising = s.forward_pe and s.trailing_pe and 0 < s.forward_pe < s.trailing_pe
     if earnings_rising:
-        growth.add(8.0, 1.0, 0, 8)  # forward P/E below trailing => earnings expected up
+        growth.add(8.0, 1.0, 0, 8)
     growth_score = growth.result(-80, 95)
 
     if s.revenue_growth is not None and s.revenue_growth >= 20:
-        reasons.append(f"Revenue growing ~{s.revenue_growth:.0f}% year-over-year")
+        good(f"Revenue growing ~{s.revenue_growth:.0f}% year-over-year")
+    elif s.revenue_growth is not None and s.revenue_growth <= -5:
+        bad(f"Revenue shrinking (~{s.revenue_growth:.0f}% year-over-year)")
     if s.earnings_growth is not None and s.earnings_growth >= 25:
-        reasons.append(f"Earnings up ~{s.earnings_growth:.0f}% year-over-year")
+        good(f"Earnings up ~{s.earnings_growth:.0f}% year-over-year")
+    elif s.earnings_growth is not None and s.earnings_growth <= -15:
+        bad(f"Earnings falling (~{s.earnings_growth:.0f}% year-over-year)")
     if s.analyst_upside_pct is not None and s.analyst_upside_pct >= 15:
-        reasons.append(f"Analysts see ~{s.analyst_upside_pct:.0f}% upside to their mean target")
+        good(f"Analysts see ~{s.analyst_upside_pct:.0f}% upside to their mean target")
+    elif s.analyst_upside_pct is not None and s.analyst_upside_pct <= -5:
+        bad(f"Trading ~{abs(s.analyst_upside_pct):.0f}% above the mean analyst target")
     if earnings_rising:
-        reasons.append("Earnings expected to rise (forward P/E sits below trailing)")
-    if s.revenue_growth is not None and s.revenue_growth <= -10:
-        reasons.append(f"Revenue shrinking (~{s.revenue_growth:.0f}% year-over-year)")
+        good("Earnings expected to rise (forward P/E sits below trailing)")
 
-    # ---- Quality: is the business any good? --------------------------------
+    # ---- Quality ----------------------------------------------------------
     quality = _Accumulator()
     quality.add(s.profit_margin, 0.7, -25, 45)
     quality.add(s.return_on_equity, 0.4, -20, 50)
     quality_score = quality.result(-40, 60)
 
     if s.profit_margin is not None and s.profit_margin >= 20:
-        reasons.append(f"High profit margin (~{s.profit_margin:.0f}%)")
+        good(f"High profit margin (~{s.profit_margin:.0f}%)")
     elif s.profit_margin is not None and s.profit_margin < 0:
-        reasons.append("Not yet profitable (negative margin)")
+        bad("Not yet profitable (negative margin)")
     if s.return_on_equity is not None and s.return_on_equity >= 20:
-        reasons.append(f"Strong return on equity (~{s.return_on_equity:.0f}%)")
+        good(f"Strong return on equity (~{s.return_on_equity:.0f}%)")
+    elif s.return_on_equity is not None and s.return_on_equity < 0:
+        bad("Negative return on equity")
 
     if s.dividend_yield and s.dividend_yield >= 3:
-        reasons.append(f"Pays a {s.dividend_yield:.1f}% dividend")
+        good(f"Pays a {s.dividend_yield:.1f}% dividend")
 
-    # ---- Blend. Missing sub-scores count as 0 so the others still speak. ----
-    composite = (
-        (value_score or 0) * 0.9
-        + (growth_score or 0) * 0.8
-        + (quality_score or 0) * 0.5
-    )
+    composite = (value_score or 0) * 0.9 + (growth_score or 0) * 0.8 + (quality_score or 0) * 0.5
 
     return ScoredStock(
         stock=s,
@@ -153,6 +203,7 @@ def _score_one(s: Stock, med: dict):
         growth_score=growth_score,
         quality_score=quality_score,
         reasons=reasons,
+        takeaway=_takeaway(s, value_score, growth_score, quality_score),
     )
 
 

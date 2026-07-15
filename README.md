@@ -65,13 +65,24 @@ is capped so one wild data point can't dominate. See `stock_agent/screener.py`.
 
 ## Your watchlist / triangle
 
-`stock_agent/watchlist.py` holds your tickers grouped into tiers:
+Your tickers are grouped into tiers on the dashboard:
 
 - **Base** (~60%, hold 2–3 yrs), **Middle** (~30%, cyclical AI/robotics/space),
   **Top** (special situations).
 
-Edit that file to change what you track — the tickers are scanned automatically
-and shown grouped by tier on the dashboard.
+**Add or remove tickers right from the page** — use the search bar in the
+triangle section (pick a tier, type a symbol, hit Add), and hover any watchlist
+card to remove it. Your edits are saved to `user_watchlist.json` (git-ignored,
+personal to you) and merged on top of the defaults, so app updates won't wipe
+them. The starting defaults live in `stock_agent/watchlist.py`.
+
+## Every card explains itself
+
+Beyond the score, each card carries a one-line **plain-English takeaway** (e.g.
+*"looks expensive versus its peers, is growing strongly, and is unprofitable"*)
+plus ▲/▼ bullet points spelling out the specific pluses and minuses — so the
+"least attractive" names actually say *why*. This works with or without the AI
+turned on.
 
 ## Project layout
 

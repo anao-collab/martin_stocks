@@ -30,6 +30,8 @@
   {% endfor %}
 </section>
 
+{% if takeaway %}<p class="takeaway big">{{ takeaway }}</p>{% endif %}
+
 <section class="metric-grid">
   <div><label>Market cap</label><b>{{ s.market_cap | money }}</b></div>
   <div><label>Trailing P/E</label><b>{{ s.trailing_pe | num }}</b></div>
@@ -50,7 +52,9 @@
 {% if reasons %}
 <section class="signals">
   <h2>Why it screened</h2>
-  <ul>{% for r in reasons %}<li>{{ r }}</li>{% endfor %}</ul>
+  <ul class="reasons">
+    {% for r in reasons %}<li class="{{ 'r-good' if r.good else 'r-bad' }}">{{ r.text }}</li>{% endfor %}
+  </ul>
 </section>
 {% endif %}
 
