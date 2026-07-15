@@ -171,6 +171,53 @@ def fetch_stock(ticker: str, use_cache: bool = True) -> Optional[Stock]:
     return stock
 
 
+HIST_TTL_SECONDS = 60 * 30  # 30 minutes
+
+
+def fetch_history(ticker: str, period: str = "6mo", use_cache: bool = True):
+    """Daily/weekly closing-price history for a ticker.
+
+    Returns {"dates": [...], "closes": [...]} or None if it can't be fetched.
+    Weekly bars for the long ranges keep the point count (and Bollinger math)
+    sensible.
+    """
+    ticker = ticker.upper().strip()
+    interval = "1wk" if period in ("2y", "5y") else "1d"
+    cache = os.path.join(CACHE_DIR, "hist", f"{ticker}_{period}.json")
+
+    if use_cache and os.path.exists(cache) and time.time() - os.path.getmtime(cache) <= HIST_TTL_SECONDS:
+        try:
+            with open(cache) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    try:
+        h = yf.Ticker(ticker).history(period=period, interval=interval)
+    except Exception:
+        return None
+    if h is None or h.empty or "Close" not in h:
+        return None
+
+    dates, closes = [], []
+    for ts, close in zip(h.index, h["Close"]):
+        c = _num(close)
+        if c is not None:
+            dates.append(ts.strftime("%Y-%m-%d"))
+            closes.append(round(c, 2))
+    if len(closes) < 2:
+        return None
+
+    out = {"dates": dates, "closes": closes}
+    os.makedirs(os.path.dirname(cache), exist_ok=True)
+    try:
+        with open(cache, "w") as f:
+            json.dump(out, f)
+    except OSError:
+        pass
+    return out
+
+
 def fetch_universe(tickers, use_cache: bool = True, progress=None):
     """Fetch snapshots for a list of tickers, skipping any that fail to resolve."""
     stocks = []

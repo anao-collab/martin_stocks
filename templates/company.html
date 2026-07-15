@@ -30,6 +30,35 @@
   {% endfor %}
 </section>
 
+{% if takeaway %}<p class="takeaway big">{{ takeaway }}</p>{% endif %}
+
+<section class="chart" id="chart">
+  <div class="chart-head">
+    <div class="ranges">
+      {% for label, period in ranges %}
+      <a class="range-btn {{ 'active' if period == active_range else '' }}"
+         href="{{ url_for('company', ticker=s.ticker, range=period) }}#chart">{{ label }}</a>
+      {% endfor %}
+    </div>
+    {% if chart and chart.change_pct is not none %}
+    <div class="chart-change {{ 'up' if chart.up else 'down' }}">{{ '%+.2f' % chart.change_pct }}% over range</div>
+    {% endif %}
+  </div>
+  {% if chart %}
+  <div class="chart-box" id="chartbox" data-width="{{ chart.width }}" data-points='{{ chart.points | tojson }}'>
+    {{ chart.svg | safe }}
+    <div class="chart-tip" id="charttip"></div>
+  </div>
+  <div class="chart-legend">
+    <span><i class="lg-price {{ 'up' if chart.up else 'down' }}"></i> Price</span>
+    <span><i class="lg-sma"></i> 20-period average</span>
+    <span><i class="lg-band"></i> Bollinger Bands (±2σ)</span>
+  </div>
+  {% else %}
+  <p class="empty">Price history isn't available for this ticker right now.</p>
+  {% endif %}
+</section>
+
 <section class="metric-grid">
   <div><label>Market cap</label><b>{{ s.market_cap | money }}</b></div>
   <div><label>Trailing P/E</label><b>{{ s.trailing_pe | num }}</b></div>
@@ -50,7 +79,9 @@
 {% if reasons %}
 <section class="signals">
   <h2>Why it screened</h2>
-  <ul>{% for r in reasons %}<li>{{ r }}</li>{% endfor %}</ul>
+  <ul class="reasons">
+    {% for r in reasons %}<li class="{{ 'r-good' if r.good else 'r-bad' }}">{{ r.text }}</li>{% endfor %}
+  </ul>
 </section>
 {% endif %}
 
@@ -67,4 +98,39 @@
     <p class="empty">No overview available.</p>
   {% endif %}
 </section>
+
+<script>
+  // Crosshair + tooltip for the price chart. Pure vanilla JS; if anything here
+  // fails the chart still renders — this only adds hover readouts.
+  (function () {
+    var box = document.getElementById('chartbox');
+    if (!box) return;
+    var pts, W = parseFloat(box.dataset.width);
+    try { pts = JSON.parse(box.dataset.points); } catch (e) { return; }
+    if (!pts || !pts.length) return;
+    var svg = box.querySelector('svg');
+    var line = svg.querySelector('.crosshair');
+    var dot = svg.querySelector('.cross-dot');
+    var tip = document.getElementById('charttip');
+
+    box.addEventListener('mousemove', function (e) {
+      var r = box.getBoundingClientRect();
+      var vx = (e.clientX - r.left) / r.width * W;   // mouse x in viewBox units
+      var best = pts[0], bd = Infinity;
+      for (var i = 0; i < pts.length; i++) {
+        var d = Math.abs(pts[i].x - vx);
+        if (d < bd) { bd = d; best = pts[i]; }
+      }
+      line.setAttribute('x1', best.x); line.setAttribute('x2', best.x); line.style.display = '';
+      dot.setAttribute('cx', best.x); dot.setAttribute('cy', best.y); dot.style.display = '';
+      tip.style.display = 'block';
+      tip.textContent = best.d + '   $' + best.p.toFixed(2);
+      var tx = best.x / W * r.width;
+      tip.style.left = Math.min(Math.max(tx - tip.offsetWidth / 2, 4), r.width - tip.offsetWidth - 4) + 'px';
+    });
+    box.addEventListener('mouseleave', function () {
+      line.style.display = 'none'; dot.style.display = 'none'; tip.style.display = 'none';
+    });
+  })();
+</script>
 {% endblock %}

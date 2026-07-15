@@ -3,29 +3,51 @@
 Run:  python app.py   then open http://localhost:5000
 
 The home page scans the large-cap universe plus your personal watchlist, scores
-every name on Value / Growth / Quality, shows the strongest and weakest, and
-lays out your watchlist by triangle tier. Click any ticker for a full overview.
+every name on Value / Growth / Quality, explains the verdict in plain English,
+and lays out your watchlist by triangle tier. You can add or remove tickers from
+the search bar. Click any ticker for a full overview.
 """
 
 from __future__ import annotations
 
 import os
 
-from flask import Flask, render_template, abort
+import hmac
 
-from stock_agent import ai
-from stock_agent.data import fetch_stock, fetch_universe
+from flask import Flask, render_template, abort, request, redirect, url_for, flash, Response
+
+from stock_agent import ai, charts
+from stock_agent.data import fetch_stock, fetch_universe, fetch_history
 from stock_agent.screener import standouts, score_stocks
 from stock_agent.universe import default_universe
-from stock_agent.watchlist import TRIANGLE, watchlist_tickers, tier_for
+from stock_agent import watchlist
 
 app = Flask(__name__)
+# Only used to flash "added / removed / not found" messages between requests.
+app.secret_key = os.environ.get("STOCK_AGENT_SECRET", "local-dev-secret")
+
+# Optional password gate. When APP_PASSWORD is set (e.g. on the deployed site),
+# every page requires it. Left unset locally, so it's open on your own machine.
+APP_USERNAME = os.environ.get("APP_USERNAME", "admin")
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+
+
+@app.before_request
+def _require_login():
+    if not APP_PASSWORD:
+        return  # no password configured — open (local dev)
+    auth = request.authorization
+    if auth and auth.username == APP_USERNAME and hmac.compare_digest(auth.password or "", APP_PASSWORD):
+        return
+    return Response(
+        "Login required.", 401, {"WWW-Authenticate": 'Basic realm="Stock Agent"'}
+    )
 
 
 def _scan_tickers():
     """The default large-caps plus everything on the watchlist, de-duplicated."""
     seen, out = set(), []
-    for t in default_universe() + watchlist_tickers():
+    for t in default_universe() + watchlist.watchlist_tickers():
         u = t.upper()
         if u not in seen:
             seen.add(u)
@@ -43,7 +65,7 @@ def _scan(refresh: bool = False):
 def _triangle_view(scored):
     """Group the watchlist into its tiers, each sorted by composite score."""
     view = []
-    for tier_name, tier in TRIANGLE.items():
+    for tier_name, tier in watchlist.triangle().items():
         rows = [scored[t] for t in tier["tickers"] if t in scored]
         rows.sort(key=lambda x: x.score, reverse=True)
         view.append({
@@ -65,10 +87,36 @@ def home():
         top=[x.to_dict() for x in result["top"]],
         bottom=[x.to_dict() for x in result["bottom"]],
         triangle=_triangle_view(scored),
+        tiers=watchlist.TIER_ORDER,
         market_read=read,
         ai_enabled=ai.ai_enabled(),
         count=len(stocks),
     )
+
+
+@app.route("/watchlist/add", methods=["POST"])
+def watchlist_add():
+    ticker = (request.form.get("ticker") or "").strip().upper()
+    tier = request.form.get("tier") or "Base"
+    if not ticker:
+        flash("Enter a ticker symbol.", "error")
+        return redirect(url_for("home"))
+    # Validate against real data before saving, so typos don't clutter the list.
+    if fetch_stock(ticker) is None:
+        flash(f"Couldn't find '{ticker}' — check the symbol and try again.", "error")
+        return redirect(url_for("home"))
+    watchlist.add_ticker(tier, ticker)
+    flash(f"Added {ticker} to your {tier} tier.", "ok")
+    return redirect(url_for("home"))
+
+
+@app.route("/watchlist/remove", methods=["POST"])
+def watchlist_remove():
+    ticker = (request.form.get("ticker") or "").strip().upper()
+    if ticker:
+        watchlist.remove_ticker(ticker)
+        flash(f"Removed {ticker} from your watchlist.", "ok")
+    return redirect(url_for("home"))
 
 
 @app.route("/company/<ticker>")
@@ -76,23 +124,35 @@ def company(ticker):
     stock = fetch_stock(ticker)
     if stock is None:
         abort(404)
-    # Score within the full scanned set so sector context is meaningful.
     universe = fetch_universe(_scan_tickers())
     if all(s.ticker != stock.ticker for s in universe):
         universe.append(stock)
     scored = {x.stock.ticker: x for x in score_stocks(universe)}.get(stock.ticker)
+    sd = scored.to_dict() if scored else {}
     overview = ai.company_overview(stock)
+
+    # Price chart with Bollinger Bands over the chosen time range.
+    rng = request.args.get("range", charts.DEFAULT_RANGE)
+    if rng not in charts.RANGE_PERIODS:
+        rng = charts.DEFAULT_RANGE
+    hist = fetch_history(stock.ticker, rng)
+    chart = charts.render(hist["dates"], hist["closes"]) if hist else None
+
     return render_template(
         "company.html",
         s=stock.to_dict(),
-        reasons=scored.reasons if scored else [],
-        score=round(scored.score, 1) if scored else None,
-        value_score=scored.to_dict()["value_score"] if scored else None,
-        growth_score=scored.to_dict()["growth_score"] if scored else None,
-        quality_score=scored.to_dict()["quality_score"] if scored else None,
-        tier=tier_for(stock.ticker),
+        reasons=sd.get("reasons", []),
+        takeaway=sd.get("takeaway"),
+        score=sd.get("score"),
+        value_score=sd.get("value_score"),
+        growth_score=sd.get("growth_score"),
+        quality_score=sd.get("quality_score"),
+        tier=watchlist.tier_for(stock.ticker),
         overview=overview,
         ai_enabled=ai.ai_enabled(),
+        chart=chart,
+        ranges=charts.RANGES,
+        active_range=rng,
     )
 
 
