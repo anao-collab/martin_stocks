@@ -14,8 +14,8 @@ import os
 
 from flask import Flask, render_template, abort, request, redirect, url_for, flash
 
-from stock_agent import ai
-from stock_agent.data import fetch_stock, fetch_universe
+from stock_agent import ai, charts
+from stock_agent.data import fetch_stock, fetch_universe, fetch_history
 from stock_agent.screener import standouts, score_stocks
 from stock_agent.universe import default_universe
 from stock_agent import watchlist
@@ -111,6 +111,14 @@ def company(ticker):
     scored = {x.stock.ticker: x for x in score_stocks(universe)}.get(stock.ticker)
     sd = scored.to_dict() if scored else {}
     overview = ai.company_overview(stock)
+
+    # Price chart with Bollinger Bands over the chosen time range.
+    rng = request.args.get("range", charts.DEFAULT_RANGE)
+    if rng not in charts.RANGE_PERIODS:
+        rng = charts.DEFAULT_RANGE
+    hist = fetch_history(stock.ticker, rng)
+    chart = charts.render(hist["dates"], hist["closes"]) if hist else None
+
     return render_template(
         "company.html",
         s=stock.to_dict(),
@@ -123,6 +131,9 @@ def company(ticker):
         tier=watchlist.tier_for(stock.ticker),
         overview=overview,
         ai_enabled=ai.ai_enabled(),
+        chart=chart,
+        ranges=charts.RANGES,
+        active_range=rng,
     )
 
 

@@ -76,6 +76,18 @@ card to remove it. Your edits are saved to `user_watchlist.json` (git-ignored,
 personal to you) and merged on top of the defaults, so app updates won't wipe
 them. The starting defaults live in `stock_agent/watchlist.py`.
 
+## Price charts with Bollinger Bands
+
+Every company page has an interactive price chart:
+
+- **Adjustable time range** — 1M / 3M / 6M / 1Y / 2Y / 5Y buttons.
+- **Bollinger Bands** — a 20-period moving average with a ±2σ envelope (a
+  volatility gauge, not a buy/sell signal).
+- **Hover** anywhere on the chart for the exact date and price.
+
+Charts are rendered server-side as plain SVG — no JavaScript charting library,
+no build step, works offline.
+
 ## Every card explains itself
 
 Beyond the score, each card carries a one-line **plain-English takeaway** (e.g.
