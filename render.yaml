@@ -1,0 +1,23 @@
+# Render Blueprint — describes the web service so Render can deploy it
+# straight from this repo. See DEPLOY.md for the click-by-click walkthrough.
+services:
+  - type: web
+    name: stock-agent
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      # Login for the private site. Set APP_PASSWORD in the Render dashboard
+      # (marked secret) — do NOT commit a real password here.
+      - key: APP_USERNAME
+        value: admin
+      - key: APP_PASSWORD
+        sync: false
+      # Optional: unlocks the Claude AI write-ups. Set in the dashboard if you
+      # have a key; leave unset and the app just shows raw data.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Random secret for Flask flash messages.
+      - key: STOCK_AGENT_SECRET
+        generateValue: true

@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import os
 
-from flask import Flask, render_template, abort, request, redirect, url_for, flash
+import hmac
+
+from flask import Flask, render_template, abort, request, redirect, url_for, flash, Response
 
 from stock_agent import ai, charts
 from stock_agent.data import fetch_stock, fetch_universe, fetch_history
@@ -23,6 +25,23 @@ from stock_agent import watchlist
 app = Flask(__name__)
 # Only used to flash "added / removed / not found" messages between requests.
 app.secret_key = os.environ.get("STOCK_AGENT_SECRET", "local-dev-secret")
+
+# Optional password gate. When APP_PASSWORD is set (e.g. on the deployed site),
+# every page requires it. Left unset locally, so it's open on your own machine.
+APP_USERNAME = os.environ.get("APP_USERNAME", "admin")
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+
+
+@app.before_request
+def _require_login():
+    if not APP_PASSWORD:
+        return  # no password configured — open (local dev)
+    auth = request.authorization
+    if auth and auth.username == APP_USERNAME and hmac.compare_digest(auth.password or "", APP_PASSWORD):
+        return
+    return Response(
+        "Login required.", 401, {"WWW-Authenticate": 'Basic realm="Stock Agent"'}
+    )
 
 
 def _scan_tickers():
