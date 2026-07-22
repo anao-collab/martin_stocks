@@ -110,10 +110,20 @@ templates/              dashboard.html, company.html, base.html
 static/style.css        dark dashboard styling
 ```
 
+## Speed & auto-refresh
+
+- Ticker data is fetched **in parallel**, so a full ~60-name scan takes seconds
+  rather than a minute.
+- The app keeps an **in-memory snapshot** that a background thread rebuilds every
+  10 minutes (`REFRESH_SECONDS`, default 600). Page loads read the snapshot, so
+  they're **instant** — only the very first load after startup does the fetch.
+- The dashboard shows "Data updated X ago" and **auto-reloads every 10 minutes**
+  (only while the tab is visible).
+
 ## Notes
 
-- Fetched data and generated AI text are cached under `.cache/` (30 min for
-  market data) so reloads are fast and you don't pay for the same summary twice.
-- To force a fresh data pull, set `STOCK_AGENT_REFRESH=1` or delete `.cache/`.
+- Fetched data and generated AI text are also cached on disk under `.cache/` so
+  restarts are warm and you don't pay for the same AI summary twice.
+- To force a fresh pull, delete `.cache/`.
 - **Informational only — this is not investment advice.** The AI is explicitly
   prompted not to give buy/sell calls or make price predictions.

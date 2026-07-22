@@ -13,6 +13,8 @@ from __future__ import annotations
 import os
 
 import hmac
+import threading
+import time
 
 from flask import Flask, render_template, abort, request, redirect, url_for, flash, Response
 
@@ -44,6 +46,9 @@ def _require_login():
     )
 
 
+REFRESH_SECONDS = int(os.environ.get("REFRESH_SECONDS", "600"))  # 10 minutes
+
+
 def _scan_tickers():
     """The default large-caps plus everything on the watchlist, de-duplicated."""
     seen, out = set(), []
@@ -55,11 +60,47 @@ def _scan_tickers():
     return out
 
 
-def _scan(refresh: bool = False):
+# ---- In-memory snapshot, refreshed on a background timer ------------------
+# Requests read this snapshot (instant) instead of fetching ~60 tickers inline.
+# A daemon thread rebuilds it every REFRESH_SECONDS with fresh data.
+_snapshot = {"stocks": [], "scored": {}, "result": {"top": [], "bottom": []}, "ts": 0.0}
+_snap_lock = threading.Lock()
+_started = False
+_start_lock = threading.Lock()
+
+
+def _rebuild(refresh: bool):
     stocks = fetch_universe(_scan_tickers(), use_cache=not refresh)
     scored = {x.stock.ticker: x for x in score_stocks(stocks)}
     result = standouts(stocks, n=6)
-    return stocks, scored, result
+    with _snap_lock:
+        _snapshot.update(stocks=stocks, scored=scored, result=result, ts=time.time())
+
+
+def _refresh_loop():
+    while True:
+        time.sleep(REFRESH_SECONDS)
+        try:
+            _rebuild(refresh=True)
+        except Exception:
+            pass  # a bad fetch shouldn't kill the refresher
+
+
+def _ensure_started():
+    """Build the first snapshot and start the background refresher, once."""
+    global _started
+    with _start_lock:
+        if _started:
+            return
+        _started = True
+        _rebuild(refresh=False)  # synchronous first build (parallel, a few seconds)
+        threading.Thread(target=_refresh_loop, daemon=True).start()
+
+
+def _get_snapshot():
+    _ensure_started()
+    with _snap_lock:
+        return dict(_snapshot)
 
 
 def _triangle_view(scored):
@@ -77,10 +118,19 @@ def _triangle_view(scored):
     return view
 
 
+def _ago(ts: float) -> str:
+    if not ts:
+        return "just now"
+    minutes = int((time.time() - ts) // 60)
+    if minutes <= 0:
+        return "just now"
+    return "1 minute ago" if minutes == 1 else f"{minutes} minutes ago"
+
+
 @app.route("/")
 def home():
-    refresh = os.environ.get("STOCK_AGENT_REFRESH") == "1"
-    stocks, scored, result = _scan(refresh=refresh)
+    snap = _get_snapshot()
+    result, scored, stocks = snap["result"], snap["scored"], snap["stocks"]
     read = ai.market_read(result["top"], result["bottom"])
     return render_template(
         "dashboard.html",
@@ -91,6 +141,8 @@ def home():
         market_read=read,
         ai_enabled=ai.ai_enabled(),
         count=len(stocks),
+        updated_ago=_ago(snap["ts"]),
+        refresh_seconds=REFRESH_SECONDS,
     )
 
 
@@ -106,6 +158,7 @@ def watchlist_add():
         flash(f"Couldn't find '{ticker}' — check the symbol and try again.", "error")
         return redirect(url_for("home"))
     watchlist.add_ticker(tier, ticker)
+    _rebuild(refresh=False)  # so the new ticker shows up immediately
     flash(f"Added {ticker} to your {tier} tier.", "ok")
     return redirect(url_for("home"))
 
@@ -115,19 +168,23 @@ def watchlist_remove():
     ticker = (request.form.get("ticker") or "").strip().upper()
     if ticker:
         watchlist.remove_ticker(ticker)
+        _rebuild(refresh=False)
         flash(f"Removed {ticker} from your watchlist.", "ok")
     return redirect(url_for("home"))
 
 
 @app.route("/company/<ticker>")
 def company(ticker):
-    stock = fetch_stock(ticker)
+    snap = _get_snapshot()
+    stock = fetch_stock(ticker)  # single ticker, served from the warm disk cache
     if stock is None:
         abort(404)
-    universe = fetch_universe(_scan_tickers())
-    if all(s.ticker != stock.ticker for s in universe):
-        universe.append(stock)
-    scored = {x.stock.ticker: x for x in score_stocks(universe)}.get(stock.ticker)
+    # Reuse the already-scored snapshot for sector context; only re-score if this
+    # ticker wasn't part of the scan.
+    scored = snap["scored"].get(stock.ticker)
+    if scored is None:
+        universe = snap["stocks"] + [stock]
+        scored = {x.stock.ticker: x for x in score_stocks(universe)}.get(stock.ticker)
     sd = scored.to_dict() if scored else {}
     overview = ai.company_overview(stock)
 

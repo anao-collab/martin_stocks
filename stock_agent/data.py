@@ -218,13 +218,16 @@ def fetch_history(ticker: str, period: str = "6mo", use_cache: bool = True):
     return out
 
 
-def fetch_universe(tickers, use_cache: bool = True, progress=None):
-    """Fetch snapshots for a list of tickers, skipping any that fail to resolve."""
-    stocks = []
-    for i, ticker in enumerate(tickers):
-        if progress:
-            progress(i + 1, len(tickers), ticker)
-        s = fetch_stock(ticker, use_cache=use_cache)
-        if s is not None:
-            stocks.append(s)
-    return stocks
+def fetch_universe(tickers, use_cache: bool = True, progress=None, max_workers: int = 10):
+    """Fetch snapshots for a list of tickers concurrently.
+
+    yfinance calls are network-bound, so pulling them in parallel turns a
+    ~60-ticker scan from a minute into a few seconds. Order is preserved and
+    tickers that fail to resolve are skipped.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    tickers = list(tickers)
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        results = list(ex.map(lambda t: fetch_stock(t, use_cache=use_cache), tickers))
+    return [s for s in results if s is not None]

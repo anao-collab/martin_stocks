@@ -57,6 +57,7 @@
   <p class="sub">Scanned {{ count }} names and scored each on three things: is it
     <b>cheap</b> vs its sector (Value), is it <b>growing</b> (Growth), and is the
     <b>business any good</b> (Quality). Each card explains the verdict in a line.</p>
+  <p class="updated">Data updated {{ updated_ago }} · auto-refreshes every {{ refresh_seconds // 60 }} min</p>
 </section>
 
 {% if ai_enabled and market_read and not market_read.startswith('__error__') %}
@@ -118,4 +119,12 @@
   </div>
   {% endfor %}
 </section>
+
+<script>
+  // Refresh the page on the same cadence as the background data refresh, but
+  // only when the tab is actually visible so it doesn't reload in the background.
+  setTimeout(function () {
+    if (!document.hidden) location.reload();
+  }, {{ refresh_seconds * 1000 }});
+</script>
 {% endblock %}
