@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Portfolio — Stock Agent{% endblock %}
 
-{% block content %}
+{% block body %}
+<div class="detailwrap">
+<a href="{{ url_for('home') }}" class="back">← back to terminal</a>
 <section class="hero">
   <h1>Portfolio</h1>
   <p class="sub">Log what you've bought to track your gains and watch your sell rule.
@@ -59,4 +61,5 @@
 <p class="empty">No holdings yet. Add your first one above — enter a ticker, how many
   shares, and what you paid per share.</p>
 {% endif %}
+</div>
 {% endblock %}

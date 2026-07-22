@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% from "_cards.html" import card %}
+{% block title %}Stock Agent — terminal{% endblock %}
+{% block bodyclass %}terminal-page{% endblock %}
+
+{% block body %}
+<div class="terminal" id="terminal">
+  <div class="col-main">
+    <div class="tabs">
+      <button class="tab {{ 'active' if active_tab == 'screener' }}" data-tab="screener">Screener</button>
+      <button class="tab {{ 'active' if active_tab == 'chart' }}" data-tab="chart">
+        Chart{% if active_symbol %} · {{ active_symbol }}{% endif %}
+      </button>
+      <span class="tabs-meta">updated {{ updated_ago }}</span>
+    </div>
+
+    <div class="panel-main">
+      <div class="tabpane" id="pane-screener" {% if active_tab != 'screener' %}style="display:none"{% endif %}>
+        <section class="hero">
+          <h1>What looks interesting</h1>
+          <p class="sub">{{ count }} names scored on <b>Value</b> (cheap vs sector),
+            <b>Growth</b>, and <b>Quality</b>. Click any card to chart it.</p>
+        </section>
+        {% if ai_enabled and market_read and not market_read.startswith('__error__') %}
+        <section class="read"><h2>The read</h2>
+          <div class="read-body">{% for para in market_read.split('\n\n') %}<p>{{ para }}</p>{% endfor %}</div>
+        </section>
+        {% elif not ai_enabled %}
+        <section class="read note"><p><b>AI insights are off.</b> Set an <code>ANTHROPIC_API_KEY</code> for a written read.</p></section>
+        {% endif %}
+        <div class="columns">
+          <section>
+            <h2 class="col-title top">🟢 Most interesting</h2>
+            <div class="grid">
+              {% for x in top %}{{ card(x, 'top') }}{% endfor %}
+              {% if not top %}<p class="empty">Nothing scoring positive right now.</p>{% endif %}
+            </div>
+          </section>
+          <section>
+            <h2 class="col-title bottom">🔴 Least attractive</h2>
+            <div class="grid">
+              {% for x in bottom %}{{ card(x, 'bottom') }}{% endfor %}
+              {% if not bottom %}<p class="empty">Nothing scoring negative right now.</p>{% endif %}
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="tabpane" id="pane-chart" {% if active_tab != 'chart' %}style="display:none"{% endif %}>
+        {% include "_chart_panel.html" %}
+      </div>
+    </div>
+
+    <div class="resize-y" id="resize-y" title="Drag to resize"></div>
+
+    <div class="panel-bottom" id="panel-bottom">
+      <div class="panel-title">
+        <span>Portfolio
+          {% if portfolio.rows %}
+          <span class="pt-total">{{ portfolio.total_val | money }} ·
+            <span class="{{ 'up' if (portfolio.total_gain_pct or 0) >= 0 else 'down' }}">
+              {{ ('%+.1f%%' % portfolio.total_gain_pct) if portfolio.total_gain_pct is not none else '—' }}</span>
+          </span>{% endif %}
+        </span>
+        <a href="{{ url_for('portfolio_page') }}">Manage →</a>
+      </div>
+      {% if portfolio.rows %}
+      <table class="mini-table">
+        <thead><tr><th>Ticker</th><th>Shares</th><th>Price</th><th>Value</th><th>Gain/loss</th></tr></thead>
+        <tbody>
+          {% for r in portfolio.rows %}
+          <tr class="{{ 'alert' if r.alert }}">
+            <td><a href="{{ url_for('home', symbol=r.ticker) }}">{{ r.ticker }}</a></td>
+            <td>{{ '%g' % r.shares }}</td>
+            <td>{{ ('$%.2f' % r.price) if r.price is not none else '—' }}</td>
+            <td>{{ (r.mkt_val | money) if r.mkt_val is not none else '—' }}</td>
+            <td class="{{ 'up' if (r.gain_pct or 0) >= 0 else 'down' }}">
+              {{ ('%+.1f%%' % r.gain_pct) if r.gain_pct is not none else '—' }}
+              {% if r.alert %}<span class="flag">▼</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="side-empty">No holdings yet. <a href="{{ url_for('portfolio_page') }}">Add what you own →</a></p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="resize-x" id="resize-x" title="Drag to resize"></div>
+
+  <div class="col-side" id="col-side">
+    <div class="panel-title"><span>Watchlist</span></div>
+    <div class="wl">
+      {% for tier in watch %}
+        {% if tier.rows %}<div class="wl-tier {{ tier.name|lower }}">{{ tier.name }}</div>{% endif %}
+        {% for r in tier.rows %}
+        <div class="wl-row-wrap">
+          <a class="wl-row" href="{{ url_for('home', symbol=r.ticker) }}">
+            <span class="wl-tick">{{ r.ticker }}</span>
+            <span class="wl-nums">
+              <span class="wl-price">{{ r.price | num(2) }}</span>
+              <span class="wl-pct {{ 'up' if (r.pct or 0) >= 0 else 'down' }}">
+                {{ ('%+.2f%%' % r.pct) if r.pct is not none else '—' }}</span>
+            </span>
+          </a>
+          <form method="post" action="{{ url_for('watchlist_remove') }}" class="s-remove">
+            <input type="hidden" name="ticker" value="{{ r.ticker }}">
+            <button type="submit" title="Remove {{ r.ticker }}">×</button>
+          </form>
+        </div>
+        {% endfor %}
+      {% endfor %}
+    </div>
+    <form class="side-add" method="post" action="{{ url_for('watchlist_add') }}">
+      <input name="ticker" placeholder="Add" maxlength="8" autocomplete="off" required>
+      <select name="tier">{% for t in tiers %}<option value="{{ t }}">{{ t }}</option>{% endfor %}</select>
+      <button type="submit" title="Add">+</button>
+    </form>
+  </div>
+</div>
+
+<script>
+  // --- tabs ---
+  document.querySelectorAll('.tab').forEach(function (t) {
+    t.addEventListener('click', function () {
+      document.querySelectorAll('.tab').forEach(function (x) { x.classList.remove('active'); });
+      document.querySelectorAll('.tabpane').forEach(function (p) { p.style.display = 'none'; });
+      t.classList.add('active');
+      document.getElementById('pane-' + t.dataset.tab).style.display = '';
+    });
+  });
+
+  // --- resizable panels (persisted) ---
+  (function () {
+    var term = document.getElementById('terminal');
+    var side = document.getElementById('col-side');
+    var bottom = document.getElementById('panel-bottom');
+    var sw = localStorage.getItem('sideW'); if (sw) side.style.width = sw + 'px';
+    var bh = localStorage.getItem('botH'); if (bh) bottom.style.height = bh + 'px';
+
+    function drag(handle, onMove, onEnd) {
+      if (!handle) return;
+      handle.addEventListener('mousedown', function (e) {
+        e.preventDefault(); document.body.style.userSelect = 'none';
+        function mv(ev) { onMove(ev); }
+        function up() {
+          document.removeEventListener('mousemove', mv);
+          document.removeEventListener('mouseup', up);
+          document.body.style.userSelect = ''; onEnd && onEnd();
+        }
+        document.addEventListener('mousemove', mv);
+        document.addEventListener('mouseup', up);
+      });
+    }
+    drag(document.getElementById('resize-x'), function (ev) {
+      var w = Math.max(200, Math.min(560, window.innerWidth - ev.clientX));
+      side.style.width = w + 'px';
+    }, function () { localStorage.setItem('sideW', parseInt(side.style.width)); });
+
+    drag(document.getElementById('resize-y'), function (ev) {
+      var r = term.getBoundingClientRect();
+      var h = Math.max(110, Math.min(r.height * 0.6, r.bottom - ev.clientY));
+      bottom.style.height = h + 'px';
+    }, function () { localStorage.setItem('botH', parseInt(bottom.style.height)); });
+  })();
+
+  // --- chart hover crosshair (only if a chart is loaded) ---
+  (function () {
+    var box = document.getElementById('chartbox');
+    if (!box) return;
+    var pts, W = parseFloat(box.dataset.width);
+    try { pts = JSON.parse(box.dataset.points); } catch (e) { return; }
+    if (!pts || !pts.length) return;
+    var svg = box.querySelector('svg');
+    var line = svg.querySelector('.crosshair'), dot = svg.querySelector('.cross-dot');
+    var tip = document.getElementById('charttip');
+    box.addEventListener('mousemove', function (e) {
+      var r = box.getBoundingClientRect();
+      var vx = (e.clientX - r.left) / r.width * W, best = pts[0], bd = Infinity;
+      for (var i = 0; i < pts.length; i++) { var d = Math.abs(pts[i].x - vx); if (d < bd) { bd = d; best = pts[i]; } }
+      line.setAttribute('x1', best.x); line.setAttribute('x2', best.x); line.style.display = '';
+      dot.setAttribute('cx', best.x); dot.setAttribute('cy', best.y); dot.style.display = '';
+      tip.style.display = 'block'; tip.textContent = best.d + '   $' + best.p.toFixed(2);
+      var tx = best.x / W * r.width;
+      tip.style.left = Math.min(Math.max(tx - tip.offsetWidth / 2, 4), r.width - tip.offsetWidth - 4) + 'px';
+    });
+    box.addEventListener('mouseleave', function () { line.style.display = 'none'; dot.style.display = 'none'; tip.style.display = 'none'; });
+  })();
+
+  // --- keep data fresh: reload on the refresh cadence, visible tab only ---
+  setTimeout(function () { if (!document.hidden) location.reload(); }, {{ refresh_seconds * 1000 }});
+</script>
+{% endblock %}

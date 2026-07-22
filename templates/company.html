@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block title %}{{ s.ticker }} — {{ s.name }}{% endblock %}
 
-{% block content %}
-<a href="{{ url_for('home') }}" class="back">← back to standouts</a>
+{% block body %}
+<div class="detailwrap">
+<a href="{{ url_for('home') }}" class="back">← back to terminal</a>
 
 <section class="company-head">
   <div>
@@ -133,4 +134,5 @@
     });
   })();
 </script>
+</div>
 {% endblock %}

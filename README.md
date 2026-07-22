@@ -20,17 +20,25 @@ Two ideas underneath it:
    A profitless fast-grower with no P/E at all can still rank well on Growth +
    Quality — which is the point.
 
-## The app
+## The terminal
 
-A TradingView-style layout:
+An Interactive-Brokers-style workspace on the home page:
 
-- **Search bar** (top) — look up any ticker and jump straight to its page.
-- **Sidebar** (every page) — your watchlist at a glance with quick scores, plus a
-  live portfolio summary. Add/remove watchlist tickers right there.
-- **Screener** — the main dashboard: most/least interesting names + your triangle.
-- **Portfolio** — log what you've bought (ticker, shares, buy price) and see live
-  gain/loss. Rows turn red when a holding falls past your −6% sell-rule reminder
-  (from class). It's a tracker — nothing places or cancels trades.
+- **Search** (top) — type a **ticker or company name**; it charts the stock.
+- **Tabs** — switch the main panel between the **Screener** (most/least
+  interesting) and the **Chart** (price + Bollinger Bands for the selected name).
+- **Watchlist panel** (right) — your tickers grouped by tier, each with **live
+  price and % change**. Click one to chart it. Add/remove inline.
+- **Portfolio panel** (bottom) — your holdings with current value and gain/loss.
+- **Resizable** — drag the bars between panels to size the side and bottom to
+  taste; your sizes are remembered.
+
+Detail pages: the **Portfolio** page (full holdings management) and each stock's
+**Full analysis** page (all metrics, the Value/Growth/Quality breakdown, chart,
+and the AI overview) open from the terminal.
+
+Holdings flag red past a −6% loss — your class sell-rule reminder. It's a
+tracker; nothing places or cancels trades.
 
 ## What it does
 

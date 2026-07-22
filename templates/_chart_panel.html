@@ -1,0 +1,45 @@
+{% if active_symbol and asym %}
+<div class="chart-panel">
+  <div class="cp-head">
+    <div class="cp-id">
+      <span class="cp-tick">{{ asym.ticker }}</span>
+      <span class="cp-name">{{ asym.name }}</span>
+      {% if active_tier %}<span class="tier-name {{ active_tier|lower }}">▲ {{ active_tier }}</span>{% endif %}
+    </div>
+    <div class="cp-price">
+      <span class="cp-last">{{ asym.price | num(2) }} <small>{{ asym.currency }}</small></span>
+      {% if asym.day_change_pct is not none %}
+      <span class="cp-chg {{ 'up' if asym.day_change_pct >= 0 else 'down' }}">
+        {{ ('%+.2f' % asym.day_change_amt) if asym.day_change_amt is not none else '' }}
+        ({{ '%+.2f' % asym.day_change_pct }}%)
+      </span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="ranges">
+    {% for label, period in ranges %}
+    <a class="range-btn {{ 'active' if period == active_range }}"
+       href="{{ url_for('home', symbol=asym.ticker, range=period) }}">{{ label }}</a>
+    {% endfor %}
+    <a class="cp-full" href="{{ url_for('company', ticker=asym.ticker) }}">Full analysis →</a>
+  </div>
+  {% if chart %}
+  <div class="chart-box" id="chartbox" data-width="{{ chart.width }}" data-points='{{ chart.points | tojson }}'>
+    {{ chart.svg | safe }}
+    <div class="chart-tip" id="charttip"></div>
+  </div>
+  <div class="chart-legend">
+    <span><i class="lg-price {{ 'up' if chart.up else 'down' }}"></i> Price</span>
+    <span><i class="lg-sma"></i> 20-period average</span>
+    <span><i class="lg-band"></i> Bollinger Bands (±2σ)</span>
+  </div>
+  {% else %}
+  <p class="empty">Price history isn't available for {{ asym.ticker }} right now.</p>
+  {% endif %}
+</div>
+{% else %}
+<div class="chart-empty">
+  <p>🔍 Search a ticker or company name up top — or click a name in your watchlist —
+    to load its chart here.</p>
+</div>
+{% endif %}

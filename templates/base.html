@@ -6,34 +6,24 @@
   <title>{% block title %}Stock Agent{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
+<body class="{% block bodyclass %}{% endblock %}">
   <header class="topbar">
     <a href="{{ url_for('home') }}" class="brand">📈 Stock Agent</a>
-    <form class="search" action="{{ url_for('lookup') }}" method="get" role="search">
-      <input name="q" placeholder="Search ticker (e.g. AAPL, NVDA)…" autocomplete="off" spellcheck="false" required>
+    <form class="search" action="{{ url_for('home') }}" method="get" role="search">
+      <input name="q" placeholder="Search by ticker or company name…" autocomplete="off" spellcheck="false" required>
     </form>
     <nav class="nav">
-      <a href="{{ url_for('home') }}" class="{{ 'active' if request.endpoint == 'home' }}">Screener</a>
+      <a href="{{ url_for('home') }}" class="{{ 'active' if request.endpoint == 'home' }}">Terminal</a>
       <a href="{{ url_for('portfolio_page') }}" class="{{ 'active' if request.endpoint == 'portfolio_page' }}">Portfolio</a>
     </nav>
   </header>
-
-  <div class="layout">
-    <main class="wrap">
-      {% with msgs = get_flashed_messages(with_categories=true) %}
-        {% if msgs %}
-        <div class="flashes">
-          {% for cat, m in msgs %}<div class="flash {{ cat }}">{{ m }}</div>{% endfor %}
-        </div>
-        {% endif %}
-      {% endwith %}
-      {% block content %}{% endblock %}
-    </main>
-    {% include "_sidebar.html" %}
-  </div>
-
-  <footer class="foot">
-    Data via Yahoo Finance (yfinance). Informational only — not investment advice.
-  </footer>
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% if msgs %}
+    <div class="flashes">
+      {% for cat, m in msgs %}<div class="flash {{ cat }}">{{ m }}</div>{% endfor %}
+    </div>
+    {% endif %}
+  {% endwith %}
+  {% block body %}{% endblock %}
 </body>
 </html>

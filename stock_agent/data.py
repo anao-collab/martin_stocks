@@ -45,6 +45,7 @@ class Stock:
     fifty_two_week_high: Optional[float]
     fifty_two_week_low: Optional[float]
     day_change_pct: Optional[float]
+    day_change_amt: Optional[float]
     summary: str
 
     @property
@@ -137,8 +138,10 @@ def fetch_stock(ticker: str, use_cache: bool = True) -> Optional[Stock]:
     price = _num(info.get("currentPrice") or info.get("regularMarketPrice"))
     prev_close = _num(info.get("previousClose") or info.get("regularMarketPreviousClose"))
     day_change = None
+    day_change_amt = None
     if price is not None and prev_close:
         day_change = round((price / prev_close - 1) * 100, 2)
+        day_change_amt = round(price - prev_close, 2)
 
     stock = Stock(
         ticker=ticker,
@@ -165,6 +168,7 @@ def fetch_stock(ticker: str, use_cache: bool = True) -> Optional[Stock]:
         fifty_two_week_high=_num(info.get("fiftyTwoWeekHigh")),
         fifty_two_week_low=_num(info.get("fiftyTwoWeekLow")),
         day_change_pct=day_change,
+        day_change_amt=day_change_amt,
         summary=(info.get("longBusinessSummary") or "").strip(),
     )
     _write_cache(stock)
@@ -172,6 +176,34 @@ def fetch_stock(ticker: str, use_cache: bool = True) -> Optional[Stock]:
 
 
 HIST_TTL_SECONDS = 60 * 30  # 30 minutes
+
+
+def search_symbol(query: str):
+    """Resolve a search box query (a ticker OR a company name) to a ticker.
+
+    Tries the query directly as a symbol first; if that misses, asks Yahoo's
+    search for the best-matching equity. Returns the uppercased ticker or None.
+    """
+    q = (query or "").strip()
+    if not q:
+        return None
+    # 1) Treat it as a ticker.
+    direct = fetch_stock(q)
+    if direct is not None:
+        return direct.ticker
+    # 2) Fall back to a name search via Yahoo (best-effort; needs newer yfinance).
+    try:
+        from yfinance import Search
+
+        quotes = getattr(Search(q, max_results=8), "quotes", None) or []
+        for quote in quotes:
+            if quote.get("quoteType") == "EQUITY" and quote.get("symbol"):
+                return quote["symbol"].upper()
+        if quotes and quotes[0].get("symbol"):
+            return quotes[0]["symbol"].upper()
+    except Exception:
+        pass
+    return None
 
 
 def fetch_history(ticker: str, period: str = "6mo", use_cache: bool = True):

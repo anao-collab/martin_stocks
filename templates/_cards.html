@@ -1,0 +1,30 @@
+{% macro badge(label, val) %}
+  {% if val is not none %}
+    <span class="sb {{ 'pos' if val >= 0 else 'neg' }}" title="{{ label }} score">{{ label[0] }} {{ '%+d' % val }}</span>
+  {% else %}
+    <span class="sb none" title="{{ label }}: no data">{{ label[0] }} —</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro card(x, kind) %}
+{% set primary = (kind == 'top') %}
+{% set ordered = (x.reasons|selectattr('good','equalto',primary)|list) + (x.reasons|rejectattr('good','equalto',primary)|list) %}
+<a class="card {{ kind }}" href="{{ url_for('home', symbol=x.ticker) }}">
+  <div class="card-head">
+    <div><span class="ticker">{{ x.ticker }}</span><span class="name">{{ x.name }}</span></div>
+    <span class="score {{ kind }}">{{ '%+.0f' % x.score }}</span>
+  </div>
+  <div class="sector">{{ x.sector }} · {{ x.market_cap | money }}</div>
+  <div class="subscores">
+    {{ badge('Value', x.value_score) }}
+    {{ badge('Growth', x.growth_score) }}
+    {{ badge('Quality', x.quality_score) }}
+  </div>
+  {% if x.takeaway %}<p class="takeaway">{{ x.takeaway }}</p>{% endif %}
+  {% if ordered %}
+  <ul class="reasons">
+    {% for r in ordered[:2] %}<li class="{{ 'r-good' if r.good else 'r-bad' }}">{{ r.text }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+</a>
+{% endmacro %}

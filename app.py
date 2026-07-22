@@ -19,7 +19,7 @@ import time
 from flask import Flask, render_template, abort, request, redirect, url_for, flash, Response
 
 from stock_agent import ai, charts, portfolio
-from stock_agent.data import fetch_stock, fetch_universe, fetch_history
+from stock_agent.data import fetch_stock, fetch_universe, fetch_history, search_symbol
 from stock_agent.screener import standouts, score_stocks
 from stock_agent.universe import default_universe
 from stock_agent import watchlist
@@ -112,19 +112,22 @@ def _price(ticker: str):
     return s.price if s else None
 
 
-@app.context_processor
-def _inject_sidebar():
-    """Watchlist + portfolio summary for the sidebar, available on every page."""
-    scored = _get_snapshot()["scored"]
+def _watchlist_rows(scored):
+    """Watchlist grouped by tier, each row carrying price + day change for the side panel."""
     tiers = []
     for name, tier in watchlist.triangle().items():
-        rows = [scored[t].to_dict() for t in tier["tickers"] if t in scored]
-        tiers.append({"name": name, "stocks": rows})
-    return {
-        "sidebar_tiers": tiers,
-        "portfolio_summary": portfolio.compute(_price),
-        "tiers": watchlist.TIER_ORDER,
-    }
+        rows = []
+        for t in tier["tickers"]:
+            x = scored.get(t)
+            if x:
+                s = x.stock
+                rows.append({
+                    "ticker": s.ticker, "price": s.price,
+                    "chg": s.day_change_amt, "pct": s.day_change_pct,
+                    "score": round(x.score),
+                })
+        tiers.append({"name": name, "rows": rows})
+    return tiers
 
 
 def _triangle_view(scored):
@@ -155,18 +158,61 @@ def _ago(ts: float) -> str:
 def home():
     snap = _get_snapshot()
     result, scored, stocks = snap["result"], snap["scored"], snap["stocks"]
+
+    # Resolve the chart symbol: a watchlist/card click passes ?symbol=, the
+    # search box passes ?q= (a ticker or a company name to look up).
+    active_symbol = None
+    symbol = request.args.get("symbol")
+    q = request.args.get("q")
+    if symbol:
+        s = fetch_stock(symbol)
+        if s:
+            active_symbol = s.ticker
+        else:
+            flash(f"Couldn't find '{symbol}'.", "error")
+    elif q:
+        sym = search_symbol(q)  # accepts a ticker or a company name
+        if sym:
+            active_symbol = sym.upper()
+        else:
+            flash(f"Couldn't find '{q}'. Try a ticker like AAPL.", "error")
+
+    active_stock = chart = active_tier = None
+    active_range = charts.DEFAULT_RANGE
+    if active_symbol:
+        active_stock = fetch_stock(active_symbol)
+        if active_stock is None:
+            flash(f"Couldn't load '{active_symbol}'.", "error")
+            active_symbol = None
+    if active_symbol:
+        active_tier = watchlist.tier_for(active_symbol)
+        rng = request.args.get("range", charts.DEFAULT_RANGE)
+        active_range = rng if rng in charts.RANGE_PERIODS else charts.DEFAULT_RANGE
+        hist = fetch_history(active_symbol, active_range)
+        chart = charts.render(hist["dates"], hist["closes"]) if hist else None
+
+    active_tab = "chart" if active_symbol else request.args.get("tab", "screener")
     read = ai.market_read(result["top"], result["bottom"])
+
     return render_template(
-        "dashboard.html",
+        "terminal.html",
         top=[x.to_dict() for x in result["top"]],
         bottom=[x.to_dict() for x in result["bottom"]],
-        triangle=_triangle_view(scored),
+        watch=_watchlist_rows(scored),
+        portfolio=portfolio.compute(_price),
         tiers=watchlist.TIER_ORDER,
         market_read=read,
         ai_enabled=ai.ai_enabled(),
         count=len(stocks),
         updated_ago=_ago(snap["ts"]),
         refresh_seconds=REFRESH_SECONDS,
+        active_symbol=active_symbol,
+        asym=active_stock.to_dict() if active_stock else None,
+        active_tier=active_tier,
+        chart=chart,
+        ranges=charts.RANGES,
+        active_range=active_range,
+        active_tab=active_tab,
     )
 
 
