@@ -9,11 +9,29 @@
 <body>
   <header class="topbar">
     <a href="{{ url_for('home') }}" class="brand">📈 Stock Agent</a>
-    <span class="tag">valuation standouts · big US large-caps</span>
+    <form class="search" action="{{ url_for('lookup') }}" method="get" role="search">
+      <input name="q" placeholder="Search ticker (e.g. AAPL, NVDA)…" autocomplete="off" spellcheck="false" required>
+    </form>
+    <nav class="nav">
+      <a href="{{ url_for('home') }}" class="{{ 'active' if request.endpoint == 'home' }}">Screener</a>
+      <a href="{{ url_for('portfolio_page') }}" class="{{ 'active' if request.endpoint == 'portfolio_page' }}">Portfolio</a>
+    </nav>
   </header>
-  <main class="wrap">
-    {% block content %}{% endblock %}
-  </main>
+
+  <div class="layout">
+    <main class="wrap">
+      {% with msgs = get_flashed_messages(with_categories=true) %}
+        {% if msgs %}
+        <div class="flashes">
+          {% for cat, m in msgs %}<div class="flash {{ cat }}">{{ m }}</div>{% endfor %}
+        </div>
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+    {% include "_sidebar.html" %}
+  </div>
+
   <footer class="foot">
     Data via Yahoo Finance (yfinance). Informational only — not investment advice.
   </footer>

@@ -1,0 +1,42 @@
+<aside class="sidebar">
+  <section class="side-card">
+    <div class="side-head">
+      <h3>Portfolio</h3>
+      <a href="{{ url_for('portfolio_page') }}">Manage →</a>
+    </div>
+    {% if portfolio_summary.rows %}
+    <div class="port-val">{{ portfolio_summary.total_val | money }}</div>
+    {% if portfolio_summary.total_gain_pct is not none %}
+    <div class="port-gain {{ 'up' if portfolio_summary.total_gain_pct >= 0 else 'down' }}">
+      {{ '%+.1f' % portfolio_summary.total_gain_pct }}% all-time
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="side-empty">No holdings yet.<br><a href="{{ url_for('portfolio_page') }}">Add what you own →</a></p>
+    {% endif %}
+  </section>
+
+  <section class="side-card">
+    <div class="side-head"><h3>Watchlist</h3></div>
+    {% for tier in sidebar_tiers %}
+      {% if tier.stocks %}<div class="side-tier {{ tier.name|lower }}">{{ tier.name }}</div>{% endif %}
+      {% for x in tier.stocks %}
+      <div class="side-row-wrap">
+        <a class="side-row" href="{{ url_for('company', ticker=x.ticker) }}">
+          <span class="s-tick">{{ x.ticker }}</span>
+          <span class="s-score {{ 'pos' if x.score >= 0 else 'neg' }}">{{ '%+.0f' % x.score }}</span>
+        </a>
+        <form method="post" action="{{ url_for('watchlist_remove') }}" class="s-remove">
+          <input type="hidden" name="ticker" value="{{ x.ticker }}">
+          <button type="submit" title="Remove {{ x.ticker }}">×</button>
+        </form>
+      </div>
+      {% endfor %}
+    {% endfor %}
+    <form class="side-add" method="post" action="{{ url_for('watchlist_add') }}">
+      <input name="ticker" placeholder="Add" maxlength="8" autocomplete="off" required>
+      <select name="tier">{% for t in tiers %}<option value="{{ t }}">{{ t }}</option>{% endfor %}</select>
+      <button type="submit" title="Add to watchlist">+</button>
+    </form>
+  </section>
+</aside>

@@ -20,6 +20,18 @@ Two ideas underneath it:
    A profitless fast-grower with no P/E at all can still rank well on Growth +
    Quality — which is the point.
 
+## The app
+
+A TradingView-style layout:
+
+- **Search bar** (top) — look up any ticker and jump straight to its page.
+- **Sidebar** (every page) — your watchlist at a glance with quick scores, plus a
+  live portfolio summary. Add/remove watchlist tickers right there.
+- **Screener** — the main dashboard: most/least interesting names + your triangle.
+- **Portfolio** — log what you've bought (ticker, shares, buy price) and see live
+  gain/loss. Rows turn red when a holding falls past your −6% sell-rule reminder
+  (from class). It's a tracker — nothing places or cancels trades.
+
 ## What it does
 
 - **Scans ~50 liquid large-caps** plus your watchlist (data from Yahoo Finance

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Portfolio — Stock Agent{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>Portfolio</h1>
+  <p class="sub">Log what you've bought to track your gains and watch your sell rule.
+    Nothing here places or cancels trades — it's a tracker, not a broker.</p>
+</section>
+
+<form class="port-add" method="post" action="{{ url_for('portfolio_add') }}">
+  <input name="ticker" placeholder="Ticker" maxlength="8" autocomplete="off" required>
+  <input name="shares" type="number" step="any" min="0" placeholder="Shares" required>
+  <input name="cost" type="number" step="any" min="0" placeholder="Buy price $" required>
+  <button type="submit">+ Add holding</button>
+</form>
+
+{% if port.rows %}
+<div class="port-totals">
+  <div><label>Cost basis</label><b>{{ port.total_cost | money }}</b></div>
+  <div><label>Market value</label><b>{{ port.total_val | money }}</b></div>
+  <div class="{{ 'up' if (port.total_gain_pct or 0) >= 0 else 'down' }}">
+    <label>Total gain/loss</label>
+    <b>{{ ('%+.1f%%' % port.total_gain_pct) if port.total_gain_pct is not none else '—' }}</b>
+  </div>
+</div>
+
+<div class="table-scroll">
+<table class="port-table">
+  <thead>
+    <tr><th>Ticker</th><th>Shares</th><th>Buy price</th><th>Current</th><th>Value</th><th>Gain/loss</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for r in port.rows %}
+    <tr class="{{ 'alert' if r.alert }}">
+      <td><a class="t-link" href="{{ url_for('company', ticker=r.ticker) }}">{{ r.ticker }}</a></td>
+      <td>{{ '%g' % r.shares }}</td>
+      <td>${{ '%.2f' % r.cost }}</td>
+      <td>{{ ('$%.2f' % r.price) if r.price is not none else '—' }}</td>
+      <td>{{ (r.mkt_val | money) if r.mkt_val is not none else '—' }}</td>
+      <td class="{{ 'up' if (r.gain_pct or 0) >= 0 else 'down' }}">
+        {{ ('%+.1f%%' % r.gain_pct) if r.gain_pct is not none else '—' }}
+        {% if r.alert %}<span class="flag">▼ past sell rule</span>{% endif %}
+      </td>
+      <td>
+        <form method="post" action="{{ url_for('portfolio_remove') }}">
+          <input type="hidden" name="index" value="{{ r.i }}">
+          <button type="submit" class="x" title="Remove">×</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="rule-note">Rows turn red when a holding is down {{ alert_pct | abs }}% or more — a reminder
+  of your class sell rule (the −5–8% stop). It's a nudge only; nothing sells automatically.</p>
+{% else %}
+<p class="empty">No holdings yet. Add your first one above — enter a ticker, how many
+  shares, and what you paid per share.</p>
+{% endif %}
+{% endblock %}

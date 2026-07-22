@@ -18,7 +18,7 @@ import time
 
 from flask import Flask, render_template, abort, request, redirect, url_for, flash, Response
 
-from stock_agent import ai, charts
+from stock_agent import ai, charts, portfolio
 from stock_agent.data import fetch_stock, fetch_universe, fetch_history
 from stock_agent.screener import standouts, score_stocks
 from stock_agent.universe import default_universe
@@ -103,6 +103,30 @@ def _get_snapshot():
         return dict(_snapshot)
 
 
+def _price(ticker: str):
+    """Current price for a ticker — from the warm snapshot if scanned, else fetched."""
+    x = _get_snapshot()["scored"].get(ticker.upper())
+    if x:
+        return x.stock.price
+    s = fetch_stock(ticker)
+    return s.price if s else None
+
+
+@app.context_processor
+def _inject_sidebar():
+    """Watchlist + portfolio summary for the sidebar, available on every page."""
+    scored = _get_snapshot()["scored"]
+    tiers = []
+    for name, tier in watchlist.triangle().items():
+        rows = [scored[t].to_dict() for t in tier["tickers"] if t in scored]
+        tiers.append({"name": name, "stocks": rows})
+    return {
+        "sidebar_tiers": tiers,
+        "portfolio_summary": portfolio.compute(_price),
+        "tiers": watchlist.TIER_ORDER,
+    }
+
+
 def _triangle_view(scored):
     """Group the watchlist into its tiers, each sorted by composite score."""
     view = []
@@ -171,6 +195,58 @@ def watchlist_remove():
         _rebuild(refresh=False)
         flash(f"Removed {ticker} from your watchlist.", "ok")
     return redirect(url_for("home"))
+
+
+@app.route("/lookup")
+def lookup():
+    """Global search: resolve a ticker and jump to its company page."""
+    q = (request.args.get("q") or "").strip().upper()
+    if not q:
+        return redirect(url_for("home"))
+    if fetch_stock(q) is None:
+        flash(f"Couldn't find '{q}'. Check the symbol and try again.", "error")
+        return redirect(request.referrer or url_for("home"))
+    return redirect(url_for("company", ticker=q))
+
+
+@app.route("/portfolio")
+def portfolio_page():
+    return render_template(
+        "portfolio.html",
+        port=portfolio.compute(_price),
+        alert_pct=portfolio.ALERT_PCT,
+    )
+
+
+@app.route("/portfolio/add", methods=["POST"])
+def portfolio_add():
+    ticker = (request.form.get("ticker") or "").strip().upper()
+    try:
+        shares = float(request.form.get("shares") or 0)
+        cost = float(request.form.get("cost") or 0)
+    except ValueError:
+        flash("Enter valid numbers for shares and buy price.", "error")
+        return redirect(url_for("portfolio_page"))
+    if not ticker or shares <= 0 or cost <= 0:
+        flash("Enter a ticker, a share count, and a buy price.", "error")
+        return redirect(url_for("portfolio_page"))
+    if fetch_stock(ticker) is None:
+        flash(f"Couldn't find '{ticker}'.", "error")
+        return redirect(url_for("portfolio_page"))
+    portfolio.add(ticker, shares, cost)
+    flash(f"Added {shares:g} shares of {ticker}.", "ok")
+    return redirect(url_for("portfolio_page"))
+
+
+@app.route("/portfolio/remove", methods=["POST"])
+def portfolio_remove():
+    try:
+        idx = int(request.form.get("index"))
+    except (TypeError, ValueError):
+        idx = -1
+    portfolio.remove(idx)
+    flash("Removed holding.", "ok")
+    return redirect(url_for("portfolio_page"))
 
 
 @app.route("/company/<ticker>")

@@ -44,14 +44,6 @@
 {% endmacro %}
 
 {% block content %}
-{% with msgs = get_flashed_messages(with_categories=true) %}
-  {% if msgs %}
-  <div class="flashes">
-    {% for cat, m in msgs %}<div class="flash {{ cat }}">{{ m }}</div>{% endfor %}
-  </div>
-  {% endif %}
-{% endwith %}
-
 <section class="hero">
   <h1>What looks interesting</h1>
   <p class="sub">Scanned {{ count }} names and scored each on three things: is it
@@ -95,13 +87,9 @@
   <div class="triangle-head">
     <div>
       <h2>▲ Your triangle</h2>
-      <p class="sub">Your watchlist, grouped the way you laid it out in class.</p>
+      <p class="sub">Your watchlist in full — grouped the way you laid it out in class.
+        (Quick view and add/remove live in the sidebar.)</p>
     </div>
-    <form class="addbar" method="post" action="{{ url_for('watchlist_add') }}">
-      <input name="ticker" placeholder="Add a ticker (e.g. PLTR)" maxlength="8" autocomplete="off" required>
-      <select name="tier">{% for t in tiers %}<option value="{{ t }}">{{ t }}</option>{% endfor %}</select>
-      <button type="submit">+ Add</button>
-    </form>
   </div>
   {% for tier in triangle %}
   <div class="tier">
@@ -111,7 +99,7 @@
     </div>
     <div class="grid tier-grid">
       {% for x in tier.stocks %}{{ card(x, 'top' if x.score >= 0 else 'bottom', removable=True) }}{% endfor %}
-      {% if not tier.stocks %}<p class="empty">Nothing here yet — add a ticker above.</p>{% endif %}
+      {% if not tier.stocks %}<p class="empty">Nothing here yet — add a ticker in the sidebar.</p>{% endif %}
     </div>
     {% if tier.missing %}
     <p class="missing">Couldn't fetch: {{ tier.missing | join(', ') }}</p>
